@@ -40,8 +40,8 @@ export class AvatarController {
 
   private updateTarget(x: number, y: number): void {
     // x, y are normalized -1 to 1 from face tracker
-    const yaw = clamp(-x * this.maxYaw, -this.maxYaw, this.maxYaw);
-    const pitch = clamp(y * this.maxPitch, -this.maxPitch, this.maxPitch);
+    const yaw = clamp(x * this.maxYaw, -this.maxYaw, this.maxYaw);
+    const pitch = clamp(-y * this.maxPitch, -this.maxPitch, this.maxPitch);
 
     const euler = new THREE.Euler(pitch, yaw, 0, 'YXZ');
     this.targetQuat.setFromEuler(euler);

@@ -25,6 +25,13 @@ export interface PatynaConfig {
     maxYaw: number;
     maxPitch: number;
   };
+  tts: {
+    provider: 'elevenlabs' | 'none';
+    apiKey: string;
+    voiceId: string;
+    model: string;
+    outputFormat: string;
+  };
 }
 
 export const DEFAULT_CONFIG: PatynaConfig = {
@@ -48,5 +55,12 @@ export const DEFAULT_CONFIG: PatynaConfig = {
     smoothingFactor: 0.08,
     maxYaw: Math.PI / 6,    // 30 degrees
     maxPitch: Math.PI / 9,  // 20 degrees
+  },
+  tts: {
+    provider: 'elevenlabs',
+    apiKey: import.meta.env.VITE_ELEVENLABS_API_KEY ?? '',
+    voiceId: import.meta.env.VITE_ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM',
+    model: 'eleven_flash_v2_5',
+    outputFormat: 'pcm_24000',
   },
 };

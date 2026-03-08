@@ -23,7 +23,7 @@ export class CommManager {
       onOpen: () => this.onOpen(),
       onClose: (_code, _reason) => this.onClose(),
       onText: (data) => this.onText(data),
-      onBinary: (_data) => { /* Aelora doesn't send binary — ignore */ },
+      onBinary: (data) => this.onBinary(data),
     };
 
     // Build WS URL with optional API key
@@ -110,6 +110,10 @@ export class CommManager {
         eventBus.emit('comm:textDone', { text: msg.reply });
         break;
 
+      case 'audio':
+        this.handleAudioJson(msg.data);
+        break;
+
       case 'error':
         eventBus.emit('comm:error', { code: 'server', message: msg.error });
         break;
@@ -120,6 +124,31 @@ export class CommManager {
 
       default:
         console.warn('[Comm] Unhandled message type:', (msg as { type: string }).type);
+    }
+  }
+
+  /** Binary frames = raw PCM Float32 audio from TTS. */
+  private onBinary(data: ArrayBuffer): void {
+    const samples = new Float32Array(data);
+    if (samples.length > 0) {
+      eventBus.emit('audio:chunkReceived', { data: samples });
+    }
+  }
+
+  /** JSON-encoded audio (base64 PCM) — fallback for backends that don't send binary. */
+  private handleAudioJson(base64: string): void {
+    try {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      const samples = new Float32Array(bytes.buffer);
+      if (samples.length > 0) {
+        eventBus.emit('audio:chunkReceived', { data: samples });
+      }
+    } catch (err) {
+      console.error('[Comm] Failed to decode audio JSON:', err);
     }
   }
 

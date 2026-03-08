@@ -28,5 +28,6 @@ export type ServerMessage =
   | { type: 'ready'; sessionId: string }
   | { type: 'token'; content: string }
   | { type: 'done'; reply: string }
+  | { type: 'audio'; data: string; format?: string }   // base64-encoded PCM
   | { type: 'error'; error: string }
   | { type: 'event'; event: string; data: unknown };

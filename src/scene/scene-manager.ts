@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import type { PatynaConfig } from '@/types/config.ts';
 import { createEnvironment, updateEnvironment } from './environment.ts';
 
@@ -10,6 +14,7 @@ export class SceneManager {
   private clock = new THREE.Clock();
   private frameCallbacks: Array<(delta: number, elapsed: number) => void> = [];
   private envMesh: THREE.Mesh | null = null;
+  private composer: EffectComposer;
 
   constructor(container: HTMLElement, config: PatynaConfig) {
     // Renderer
@@ -21,12 +26,12 @@ export class SceneManager {
     this.renderer.setSize(container.clientWidth, container.clientHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.4;
+    this.renderer.toneMappingExposure = 1.5;
     container.appendChild(this.renderer.domElement);
 
-    // Scene
+    // Scene — rich dark background to complement teal glow
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#191B20');
+    this.scene.background = new THREE.Color('#0E1014');
 
     // Camera
     const aspect = container.clientWidth / container.clientHeight;
@@ -40,6 +45,19 @@ export class SceneManager {
     // Environment (contour background + sparkles)
     this.envMesh = createEnvironment(this.scene);
 
+    // Post-processing — bloom makes emissive elements glow naturally
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+
+    const bloom = new UnrealBloomPass(
+      new THREE.Vector2(container.clientWidth, container.clientHeight),
+      0.35,   // strength — gentle, not blinding
+      0.5,    // radius — medium spread
+      0.82,   // threshold — only bright emissive parts bloom, not background
+    );
+    this.composer.addPass(bloom);
+    this.composer.addPass(new OutputPass());
+
     // Resize handling
     const onResize = () => {
       const w = container.clientWidth;
@@ -47,6 +65,7 @@ export class SceneManager {
       this.camera.aspect = w / h;
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(w, h);
+      this.composer.setSize(w, h);
     };
     window.addEventListener('resize', onResize);
 
@@ -74,10 +93,15 @@ export class SceneManager {
     top.position.set(0, 4, 0.5);
     this.scene.add(top);
 
-    // Rim light — subtle cool backlight for depth + wing glow
-    const rim = new THREE.DirectionalLight(0xD0FFE8, 0.25);
+    // Rim light — cool backlight for depth separation + wing edge glow
+    const rim = new THREE.DirectionalLight(0xD0FFE8, 0.35);
     rim.position.set(0, 0.5, -2);
     this.scene.add(rim);
+
+    // Under-glow — warm lift from below to soften chin shadow
+    const under = new THREE.DirectionalLight(0xE8FFF4, 0.15);
+    under.position.set(0, -2, 1);
+    this.scene.add(under);
   }
 
   /** Register a callback to run each frame */
@@ -90,13 +114,13 @@ export class SceneManager {
     const delta = this.clock.getDelta();
     const elapsed = this.clock.getElapsedTime();
 
-    // Update environment shader (contour animation + sparkle twinkle)
-    if (this.envMesh) updateEnvironment(this.envMesh, elapsed);
+    // Update environment shader (contour animation + sparkle twinkle + mood color)
+    if (this.envMesh) updateEnvironment(this.envMesh, elapsed, delta);
 
     for (const cb of this.frameCallbacks) {
       cb(delta, elapsed);
     }
 
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   };
 }

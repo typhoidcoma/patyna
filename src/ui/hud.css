@@ -101,18 +101,47 @@
   background: #666;
 }
 
-/* Media status icons (mic/camera) */
-.hud-media {
-  font-size: 11px;
-  margin-left: var(--space-sm);
+/* Media toggle buttons (mic/camera) */
+.hud-toggle-btn {
+  font-size: 12px;
+  margin-left: var(--space-xs);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--radius-small);
+  padding: 2px 5px;
+  cursor: pointer;
   opacity: 0;
-  transition: opacity var(--duration-normal) var(--ease-smooth);
+  transition: all var(--duration-normal) var(--ease-smooth);
   user-select: none;
-  letter-spacing: 0.15em;
+  pointer-events: all;
+  position: relative;
+  line-height: 1;
 }
 
-.hud-media.visible {
-  opacity: 0.4;
+.hud-toggle-btn.visible {
+  opacity: 0.5;
+}
+
+.hud-toggle-btn.visible:hover {
+  opacity: 0.8;
+  border-color: var(--color-border);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.hud-toggle-btn[data-active="on"] {
+  opacity: 0.7;
+}
+
+.hud-toggle-btn[data-active="off"]::after {
+  content: '';
+  position: absolute;
+  left: 25%;
+  right: 25%;
+  top: 45%;
+  height: 1.5px;
+  background: #EF5350;
+  transform: rotate(-30deg);
+  pointer-events: none;
 }
 
 /* Mood indicator */

@@ -93,6 +93,23 @@ export class VoiceManager {
     }
   }
 
+  /** Pause VAD listening (mic mute). */
+  pause(): void {
+    if (this._micAvailable) {
+      this.vad.pause();
+      if (this.stt.listening) this.stt.stop();
+      console.log('[Voice] Paused');
+    }
+  }
+
+  /** Resume VAD listening (mic unmute). */
+  resume(): void {
+    if (this._micAvailable) {
+      this.vad.resume();
+      console.log('[Voice] Resumed');
+    }
+  }
+
   /** Clean up all resources. */
   async destroy(): Promise<void> {
     this.stt.stop();

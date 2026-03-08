@@ -1,0 +1,115 @@
+# Patyna
+
+Real-time AI avatar with voice interaction. A mint-teal butterfly-core entity that listens, thinks, and speaks with audio-reactive animations.
+
+## What it does
+
+- **3D Avatar** — Pear-shaped body, butterfly wings, antennae with glowing tips, dark-pool eyes with sparkle highlights
+- **Voice conversation** — Speak to Patyna via microphone (VAD + Web Speech STT), get voice responses via ElevenLabs TTS
+- **Audio-reactive animation** — Mouth, wings, core glow, and antenna tips all react to the actual audio waveform per-frame using Web Audio AnalyserNode
+- **Face tracking** — Camera-based head tracking via MediaPipe, avatar follows your gaze
+- **Mood system** — Backend sends emotional state; environment sparkles change color to match mood
+- **Text input** — Type messages as an alternative to voice
+
+## Architecture
+
+```
+src/
+  app.ts                    # Main orchestrator — wires everything together
+  main.ts                   # Entry point — mounts App into #app
+
+  core/
+    state-machine.ts        # idle -> listening -> thinking -> speaking
+    event-bus.ts            # Typed pub/sub for decoupled communication
+
+  scene/
+    scene-manager.ts        # Three.js renderer, camera, lights, resize
+    avatar.ts               # 3D butterfly avatar — geometry, materials, animation
+    avatar-controller.ts    # Face-tracking gaze controller
+    environment.ts          # Shader-based background with mood-colored sparkles
+
+  audio/
+    audio-manager.ts        # AudioContext lifecycle
+    tts-player.ts           # AudioWorklet playback + AnalyserNode for amplitude
+    elevenlabs-tts.ts       # ElevenLabs WebSocket streaming TTS
+
+  voice/
+    voice-manager.ts        # Coordinates VAD + STT
+    vad.ts                  # Voice Activity Detection (@ricky0123/vad-web)
+    stt-provider.ts         # STT interface
+    web-speech-stt.ts       # Web Speech API implementation
+
+  comm/
+    protocol.ts             # Aelora backend protocol (WebSocket)
+    websocket-client.ts     # Reconnecting WebSocket wrapper
+    message-codec.ts        # JSON message encoding/decoding
+
+  tracking/
+    webcam.ts               # Camera stream management
+    face-tracker.ts         # MediaPipe face landmark detection
+
+  ui/
+    hud.ts                  # HUD overlay + input panel
+    hud.css                 # HUD styles
+
+  types/
+    config.ts               # App configuration + defaults
+    events.ts               # EventBus type map
+    messages.ts             # WebSocket protocol message types
+```
+
+## State machine
+
+```
+idle --> listening --> thinking --> speaking --> idle
+                                      |
+                         (idle --> speaking)  // handles audio race condition
+```
+
+- **idle** — Calm floating, gentle bob and wing shimmer
+- **listening** — Forward lean, wings angled in, mouth slightly open
+- **thinking** — Stays visually calm (same as idle) while waiting for audio
+- **speaking** — Audio-reactive: mouth tracks amplitude, wings flutter with voice intensity, antenna tips glow brighter with louder audio, core pulses
+
+## Audio pipeline
+
+```
+ElevenLabs WS --> base64 decode --> PCM16->Float32 --> AudioWorklet --> AnalyserNode --> speakers
+                                                                            |
+                                                              getAmplitude() per frame
+                                                                            |
+                                                              avatar mouth, wings, glow
+```
+
+The AnalyserNode provides true per-frame waveform data synced with audio output — no lag, no coarse per-chunk averaging.
+
+## Tech stack
+
+- **Three.js** — 3D rendering (MeshPhysicalMaterial, ShaderMaterial, ExtrudeGeometry)
+- **Web Audio API** — AudioWorklet for low-latency TTS playback, AnalyserNode for amplitude
+- **MediaPipe** — Face landmark detection for gaze tracking
+- **VAD** — @ricky0123/vad-web for voice activity detection
+- **Web Speech API** — Browser-native speech-to-text
+- **ElevenLabs** — Streaming text-to-speech via WebSocket
+- **Vite** — Dev server and bundler
+- **TypeScript** — Full type safety throughout
+
+## Setup
+
+```bash
+npm install
+```
+
+Create `.env` with your API keys:
+
+```
+VITE_AELORA_WS=wss://your-backend-url
+VITE_ELEVENLABS_KEY=your-elevenlabs-api-key
+```
+
+```bash
+npm run dev      # Start dev server (default: port 3005)
+npm run build    # Production build
+```
+
+Open in browser, click "Click to begin", grant mic + camera permissions.

@@ -2,7 +2,7 @@ import type { AppState } from '@/types/config.ts';
 import { eventBus } from './event-bus.ts';
 
 const VALID_TRANSITIONS: Record<AppState, AppState[]> = {
-  idle: ['listening'],
+  idle: ['listening', 'speaking'],
   listening: ['thinking', 'idle'],
   thinking: ['speaking', 'idle'],
   speaking: ['idle', 'listening'],

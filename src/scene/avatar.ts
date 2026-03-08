@@ -40,10 +40,16 @@ export class Avatar {
   private coreGlowMat: THREE.MeshBasicMaterial;
   private wingMat: THREE.MeshBasicMaterial;
   private antennaTipMat: THREE.MeshBasicMaterial;
+  private mouthMat!: THREE.MeshBasicMaterial;
 
   // State
   private currentState: AppState = 'idle';
   private stateBlend = 0;
+  private audioAmplitude = 0;
+
+  // Mouth color targets for speaking
+  private readonly mouthIdleColor = new THREE.Color('#1C8E77');
+  private readonly mouthSpeakColor = new THREE.Color('#4AEDC4');
 
   // Stored base positions for reset each frame
   private eyeBaseY = 0;
@@ -65,9 +71,9 @@ export class Avatar {
     this.coreGlowMat = this.createCoreGlowMaterial();
     this.wingMat = this.createWingMaterial();
     this.antennaTipMat = new THREE.MeshBasicMaterial({
-      color: '#B8FFF0',
+      color: '#D0FFF4',
       transparent: true,
-      opacity: 0.8,
+      opacity: 0.95,
     });
 
     // ── Build geometry ──
@@ -101,22 +107,27 @@ export class Avatar {
       this.currentState = to;
       this.stateBlend = 0;
     });
+
+  }
+
+  /** Set audio amplitude directly from render loop (avoids event bus at 60fps) */
+  setAmplitude(value: number): void {
+    // Smooth toward target (prevents jitter, gives natural feel)
+    this.audioAmplitude += (value - this.audioAmplitude) * 0.35;
   }
 
   // ══════════════════════════════════════
   // MATERIALS
   // ══════════════════════════════════════
 
-  /** Solid glossy ceramic/jelly — soft, cute, NOT glass */
+  /** Soft ceramic body — gentle sheen, no harsh clearcoat reflections */
   private createBodyMaterial(): THREE.MeshPhysicalMaterial {
     return new THREE.MeshPhysicalMaterial({
       color: '#63E6C7',
-      roughness: 0.22,
+      roughness: 0.42,
       metalness: 0.0,
-      clearcoat: 0.6,
-      clearcoatRoughness: 0.12,
-      sheen: 0.8,
-      sheenRoughness: 0.25,
+      sheen: 0.5,
+      sheenRoughness: 0.4,
       sheenColor: new THREE.Color('#B8FFF0'),
       emissive: '#63E6C7',
       emissiveIntensity: 0.15,
@@ -139,22 +150,22 @@ export class Avatar {
   /** Soft additive glow halo around core area */
   private createCoreGlowMaterial(): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({
-      color: '#B8FFF0',
+      color: '#C8FFF4',
       transparent: true,
-      opacity: 0.12,
+      opacity: 0.18,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
       side: THREE.BackSide,
     });
   }
 
-  /** Wing material — adapted from Wing Mint #E9FFFA for dark background.
-   *  More saturated so the mint reads clearly against #1A1A1F */
+  /** Wing material — translucent saturated mint for ethereal butterfly feel.
+   *  Lower opacity keeps them delicate; deeper color avoids white-out on dark bg */
   private createWingMaterial(): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({
-      color: '#B0F5E0',
+      color: '#6EECC0',
       transparent: true,
-      opacity: 0.78,
+      opacity: 0.48,
       side: THREE.DoubleSide,
       depthWrite: false,
     });
@@ -164,35 +175,43 @@ export class Avatar {
   // GEOMETRY BUILDERS
   // ══════════════════════════════════════
 
-  /** Teardrop body via LatheGeometry — smooth round blob, wider base, gentle taper */
+  /** Pear-shaped body via deformed SphereGeometry — seamless, no lathe crease */
   private buildBody(): THREE.Mesh {
-    // Rounded blob with gentle taper — NOT a sharp teardrop, more pear/egg shaped
-    const controlPts = [
-      new THREE.Vector2(0, -0.38),     // bottom center
-      new THREE.Vector2(0.08, -0.38),
-      new THREE.Vector2(0.22, -0.34),
-      new THREE.Vector2(0.35, -0.24),
-      new THREE.Vector2(0.42, -0.10),  // widest zone (lower half)
-      new THREE.Vector2(0.44, 0.0),    // equator
-      new THREE.Vector2(0.43, 0.10),
-      new THREE.Vector2(0.40, 0.20),   // still wide up top — rounded, not tapered
-      new THREE.Vector2(0.34, 0.30),
-      new THREE.Vector2(0.26, 0.38),
-      new THREE.Vector2(0.18, 0.43),   // gentle narrowing only at very top
-      new THREE.Vector2(0.10, 0.47),
-      new THREE.Vector2(0.04, 0.49),
-      new THREE.Vector2(0, 0.50),      // soft rounded top
-    ];
+    const geo = new THREE.SphereGeometry(0.44, 64, 48);
+    const pos = geo.attributes.position;
 
-    // Interpolate with a CatmullRom curve for smooth profile
-    const curve = new THREE.SplineCurve(controlPts);
-    const profile = curve.getPoints(48);
+    for (let i = 0; i < pos.count; i++) {
+      const x = pos.getX(i);
+      const y = pos.getY(i);
+      const z = pos.getZ(i);
 
-    const geo = new THREE.LatheGeometry(profile, 96);
+      // Normalised height: -1 (bottom) to +1 (top)
+      const ny = y / 0.44;
+
+      // Radius multiplier — wide at equator/lower, tapers gently at top
+      let rScale: number;
+      if (ny < -0.2) {
+        // Bottom hemisphere: slightly narrower toward pole
+        rScale = 0.92 + 0.08 * (1 - ((-0.2 - ny) / 0.8) ** 2);
+      } else if (ny < 0.3) {
+        // Widest band (lower-mid)
+        rScale = 1.0;
+      } else {
+        // Upper: gentle taper to ~60% radius at top
+        const t = (ny - 0.3) / 0.7;
+        rScale = 1.0 - 0.40 * (t * t);
+      }
+
+      // Vertically stretch: taller top half, compact bottom
+      const yStretch = ny < 0 ? 0.86 : 1.14;
+
+      pos.setXYZ(i, x * rScale, y * yStretch, z * rScale);
+    }
+
     geo.computeVertexNormals();
     const mesh = new THREE.Mesh(geo, this.bodyMat);
     mesh.position.y = 0.02;
-    mesh.scale.setScalar(0.92);   // slightly smaller body → wings more prominent
+    mesh.scale.setScalar(0.92);
     return mesh;
   }
 
@@ -219,10 +238,8 @@ export class Avatar {
     const eyeZ = 0.38;
     this.eyeBaseY = eyeY;
 
-    const eyeMat = new THREE.MeshStandardMaterial({
+    const eyeMat = new THREE.MeshBasicMaterial({
       color: '#0A0A12',
-      roughness: 0.05,
-      metalness: 0.1,
     });
     const hlMat = new THREE.MeshBasicMaterial({ color: '#FFFFFF' });
 
@@ -250,12 +267,12 @@ export class Avatar {
     }
   }
 
-  /** Subtle smile arc — positioned just on body surface */
+  /** Smile arc — positioned just on body surface, larger for visible animation */
   private buildMouth(): THREE.Mesh {
-    const mouthMat = new THREE.MeshBasicMaterial({ color: '#1C8E77' });
+    this.mouthMat = new THREE.MeshBasicMaterial({ color: '#1C8E77' });
     const mouth = new THREE.Mesh(
-      new THREE.TorusGeometry(0.028, 0.005, 8, 14, Math.PI),
-      mouthMat,
+      new THREE.TorusGeometry(0.038, 0.008, 8, 14, Math.PI),
+      this.mouthMat,
     );
     mouth.position.set(0, 0.01, 0.42);
     mouth.rotation.z = Math.PI;
@@ -354,8 +371,8 @@ export class Avatar {
       const stalk = new THREE.Mesh(stalkGeo, stalkMat);
       antennaGroup.add(stalk);
 
-      // Glowing tip
-      const tipGeo = new THREE.SphereGeometry(0.015, 12, 8);
+      // Glowing tip — slightly larger for visibility
+      const tipGeo = new THREE.SphereGeometry(0.018, 12, 8);
       const tip = new THREE.Mesh(tipGeo, this.antennaTipMat);
       const tipPos = curve.getPoint(1);
       tip.position.copy(tipPos);
@@ -369,8 +386,12 @@ export class Avatar {
 
   /** Per-frame update — idle animation + state-driven reactions */
   update(_delta: number, elapsed: number): void {
-    // Ease state blend toward 1
-    this.stateBlend = Math.min(1, this.stateBlend + _delta * 3.0);
+    // Ease state blend toward 1 (faster for speaking so it kicks in immediately)
+    const blendSpeed = this.currentState === 'speaking' ? 5.0 : 3.0;
+    this.stateBlend = Math.min(1, this.stateBlend + _delta * blendSpeed);
+
+    // Gentle decay when no amplitude events arrive (e.g. audio ended)
+    this.audioAmplitude *= Math.max(0, 1 - _delta * 6.0);
 
     // Reset animated properties to base values
     this.bodyAnimGroup.position.set(0, 0, 0);
@@ -379,7 +400,7 @@ export class Avatar {
     this.rightEyeGroup.position.y = this.eyeBaseY;
     this.mouth.scale.set(1, 1, 1);
 
-    const idleMix = this.currentState === 'idle' ? 1.0 : 0.4;
+    const idleMix = this.currentState === 'speaking' ? 0.15 : 1.0;
 
     // ── Core pulse (always active, speed varies by state) ──
     this.updateCorePulse(elapsed);
@@ -438,10 +459,11 @@ export class Avatar {
         glowMin = 0.08; glowMax = 0.18;
         break;
       case 'thinking':
-        speed = 2.5;
-        bodyMin = 0.12; bodyMax = 0.28;
-        coreMin = 0.3; coreMax = 0.8;
-        glowMin = 0.05; glowMax = 0.20;
+        // Same as idle — avatar stays calm while waiting for audio
+        speed = 1.0;
+        bodyMin = 0.12; bodyMax = 0.20;
+        coreMin = 0.3; coreMax = 0.6;
+        glowMin = 0.06; glowMax = 0.15;
         break;
       case 'speaking':
         speed = 0.8;
@@ -467,9 +489,9 @@ export class Avatar {
     this.wingGroupLeft.rotation.z = flutter2 * idleMix;
     this.wingGroupRight.rotation.z = -flutter2 * idleMix;
 
-    // Soft opacity breathing
+    // Soft opacity breathing — translucent shimmer
     const shimmer = Math.sin(elapsed * 1.8) * 0.5 + 0.5;
-    this.wingMat.opacity = 0.72 + shimmer * 0.14;
+    this.wingMat.opacity = 0.42 + shimmer * 0.14;
   }
 
   /** Deterministic blink — ~4s cycle, 0.15s duration */
@@ -495,9 +517,9 @@ export class Avatar {
     this.antennaRight.rotation.z = Math.sin(elapsed * 1.2 + 1.0) * 0.08;
     this.antennaRight.rotation.x = Math.sin(elapsed * 0.9 + 1.5) * 0.04;
 
-    // Tip glow pulse (offset from core)
+    // Tip glow pulse (offset from core) — bright pulsing beacons
     const tipGlow = Math.sin(elapsed * 1.8 + 0.3) * 0.5 + 0.5;
-    this.antennaTipMat.opacity = 0.5 + tipGlow * 0.4;
+    this.antennaTipMat.opacity = 0.6 + tipGlow * 0.4;
   }
 
   // ── State-specific overrides ──
@@ -514,33 +536,55 @@ export class Avatar {
     this.mouth.scale.y = 1.0 + 0.3 * this.stateBlend;
   }
 
-  /** Thinking — eyes up, bounce, head tilt, faster core shimmer */
-  private updateThinking(elapsed: number): void {
-    // Eyes glance upward
-    const eyeShift = 0.01 * this.stateBlend;
+  /** Thinking — stay calm, just subtle eye glance upward.
+   *  No bouncing or head tilting — avatar waits quietly for audio. */
+  private updateThinking(_elapsed: number): void {
+    // Very subtle eyes-up hint (barely noticeable)
+    const eyeShift = 0.005 * this.stateBlend;
     this.leftEyeGroup.position.y += eyeShift;
     this.rightEyeGroup.position.y += eyeShift;
-
-    // Gentle vertical bounce
-    const bounce = Math.abs(Math.sin(elapsed * 3.5));
-    this.bodyAnimGroup.position.y += bounce * 0.012 * this.stateBlend;
-
-    // Subtle head tilt
-    this.bodyAnimGroup.rotation.z += Math.sin(elapsed * 1.2) * 0.02 * this.stateBlend;
   }
 
-  /** Speaking — mouth animation, body bob, wings flutter more */
+  /** Speaking — voice-reactive animation: mouth, core, body, wings, antennae */
   private updateSpeaking(elapsed: number): void {
-    // Multi-frequency mouth animation
-    const mouthOpen = (Math.sin(elapsed * 10.0) * 0.5 + 0.5)
-                    * (Math.sin(elapsed * 6.5) * 0.3 + 0.7);
-    this.mouth.scale.y = 1.0 + mouthOpen * 0.8 * this.stateBlend;
+    const blend = this.stateBlend;
+    const amp = this.audioAmplitude;
 
-    // Gentle body bob
-    this.bodyAnimGroup.position.y += Math.sin(elapsed * 4.0) * 0.004 * this.stateBlend;
+    // ── Mouth: amplitude-driven when audio is flowing, sine fallback otherwise ──
+    const sineOpen = (Math.sin(elapsed * 10.0) * 0.5 + 0.5)
+                   * (Math.sin(elapsed * 6.5) * 0.3 + 0.7);
+    const mouthOpen = amp > 0.01 ? amp : sineOpen * 0.4;
+    this.mouth.scale.y = 1.0 + mouthOpen * 2.5 * blend;
+    this.mouth.scale.x = 1.0 + mouthOpen * 0.35 * blend;
 
-    // Wings flutter more actively during speech
-    this.wingGroupLeft.rotation.y += Math.sin(elapsed * 5.0) * 0.06 * this.stateBlend;
-    this.wingGroupRight.rotation.y -= Math.sin(elapsed * 5.0) * 0.06 * this.stateBlend;
+    // Mouth color: brighten toward mint during speaking
+    this.mouthMat.color.copy(this.mouthIdleColor).lerp(this.mouthSpeakColor, blend * (0.5 + amp * 0.5));
+
+    // ── Core glow reacts to voice ──
+    this.coreMat.emissiveIntensity += amp * 0.4 * blend;
+    this.coreGlowMat.opacity += amp * 0.12 * blend;
+
+    // ── Body: gentle rhythmic sway (NOT amplitude-driven — avoids jitter) ──
+    this.bodyMat.emissiveIntensity += amp * 0.12 * blend;
+    this.bodyAnimGroup.position.y += Math.sin(elapsed * 2.5) * 0.010 * blend;
+
+    // ── Wings flutter scales with voice ──
+    const wingAmp = (1.0 + amp * 2.0) * blend;
+    this.wingGroupLeft.rotation.y += Math.sin(elapsed * 5.0) * 0.10 * wingAmp;
+    this.wingGroupRight.rotation.y -= Math.sin(elapsed * 5.0) * 0.10 * wingAmp;
+
+    // ── Antenna excitement — faster, larger sway ──
+    this.antennaLeft.rotation.z += (Math.sin(elapsed * 4.5) * 0.18 - Math.sin(elapsed * 1.2) * 0.08) * blend;
+    this.antennaLeft.rotation.x += (Math.sin(elapsed * 3.0 + 0.5) * 0.10 - Math.sin(elapsed * 0.9 + 0.5) * 0.04) * blend;
+    this.antennaRight.rotation.z += (Math.sin(elapsed * 4.5 + 1.0) * 0.18 - Math.sin(elapsed * 1.2 + 1.0) * 0.08) * blend;
+    this.antennaRight.rotation.x += (Math.sin(elapsed * 3.0 + 1.5) * 0.10 - Math.sin(elapsed * 0.9 + 1.5) * 0.04) * blend;
+
+    // ── Antenna tips: glow intensity tracks voice amplitude ──
+    this.antennaTipMat.opacity = 0.2 + amp * 0.8;
+    this.antennaTipMat.color.setRGB(
+      0.816 + amp * 0.184,   // R: push toward white at loud
+      1.0,                    // G: always full
+      0.957 + amp * 0.043,   // B: push toward white at loud
+    );
   }
 }

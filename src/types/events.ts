@@ -18,9 +18,12 @@ export interface EventMap {
   'audio:chunkReceived': { data: Float32Array };
   'audio:playbackStart': void;
   'audio:playbackEnd': void;
+  'audio:amplitude': { value: number };
 
-  // Media permissions
+  // Media permissions & toggles
   'media:status': { mic: boolean; camera: boolean };
+  'media:micToggle': { enabled: boolean };
+  'media:cameraToggle': { enabled: boolean };
 
   // Communication (Aelora)
   'comm:connected': void;

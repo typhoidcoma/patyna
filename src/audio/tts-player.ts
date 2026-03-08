@@ -12,6 +12,8 @@ import { AudioManager } from './audio-manager.ts';
 export class TTSPlayer {
   private audioManager: AudioManager;
   private workletNode: AudioWorkletNode | null = null;
+  private analyser: AnalyserNode | null = null;
+  private analyserData: Uint8Array | null = null;
   private initialized = false;
   private playing = false;
 
@@ -50,8 +52,14 @@ export class TTSPlayer {
       }
     };
 
-    // Connect to audio output
-    this.workletNode.connect(ctx.destination);
+    // AnalyserNode for per-frame amplitude (worklet → analyser → destination)
+    this.analyser = ctx.createAnalyser();
+    this.analyser.fftSize = 256;
+    this.analyser.smoothingTimeConstant = 0.4;
+    this.analyserData = new Uint8Array(this.analyser.fftSize);
+
+    this.workletNode.connect(this.analyser);
+    this.analyser.connect(ctx.destination);
 
     // Listen for incoming audio chunks from the comm layer
     eventBus.on('audio:chunkReceived', ({ data }) => {
@@ -68,7 +76,28 @@ export class TTSPlayer {
       console.warn('[TTS] Not initialized — dropping chunk');
       return;
     }
+    // Ensure AudioContext is running (browsers may re-suspend after inactivity)
+    this.audioManager.resume();
     this.workletNode.port.postMessage({ type: 'chunk', data: samples });
+  }
+
+  /**
+   * Per-frame amplitude from AnalyserNode — call every frame from the render loop.
+   * Returns 0..1 normalised RMS of the current audio output.
+   */
+  getAmplitude(): number {
+    if (!this.analyser || !this.analyserData) return 0;
+    this.analyser.getByteTimeDomainData(this.analyserData);
+
+    // Compute RMS from time-domain waveform (unsigned bytes, 128 = silence)
+    let sum = 0;
+    for (let i = 0; i < this.analyserData.length; i++) {
+      const v = (this.analyserData[i] - 128) / 128;
+      sum += v * v;
+    }
+    const rms = Math.sqrt(sum / this.analyserData.length);
+    // Scale up for visual sensitivity (rms rarely exceeds ~0.3 for speech)
+    return Math.min(1, rms * 4);
   }
 
   /** Flush the playback buffer (e.g., on interruption). */
@@ -88,6 +117,11 @@ export class TTSPlayer {
     if (this.workletNode) {
       this.workletNode.disconnect();
       this.workletNode = null;
+    }
+    if (this.analyser) {
+      this.analyser.disconnect();
+      this.analyser = null;
+      this.analyserData = null;
     }
     this.initialized = false;
   }

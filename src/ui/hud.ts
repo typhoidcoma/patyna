@@ -14,7 +14,10 @@ export class HUD {
   private statusDot: HTMLDivElement;
   private statusLabel: HTMLSpanElement;
   private connDot: HTMLDivElement;
-  private mediaIcons: HTMLSpanElement;
+  private micBtn: HTMLButtonElement;
+  private camBtn: HTMLButtonElement;
+  private micEnabled = false;
+  private camEnabled = false;
   private moodLabel: HTMLSpanElement;
   private responseArea: HTMLDivElement;
   private responseText: HTMLDivElement;
@@ -58,13 +61,24 @@ export class HUD {
     this.connDot.className = 'hud-conn';
     this.connDot.dataset.conn = 'disconnected';
 
-    this.mediaIcons = document.createElement('span');
-    this.mediaIcons.className = 'hud-media';
+    this.micBtn = document.createElement('button');
+    this.micBtn.className = 'hud-toggle-btn';
+    this.micBtn.dataset.kind = 'mic';
+    this.micBtn.dataset.active = 'off';
+    this.micBtn.textContent = '\u{1F3A4}';
+    this.micBtn.title = 'Toggle microphone';
+
+    this.camBtn = document.createElement('button');
+    this.camBtn.className = 'hud-toggle-btn';
+    this.camBtn.dataset.kind = 'cam';
+    this.camBtn.dataset.active = 'off';
+    this.camBtn.textContent = '\u{1F4F7}';
+    this.camBtn.title = 'Toggle camera';
 
     this.moodLabel = document.createElement('span');
     this.moodLabel.className = 'hud-mood';
 
-    leftGroup.append(wordmark, this.connDot, this.mediaIcons, this.moodLabel);
+    leftGroup.append(wordmark, this.connDot, this.micBtn, this.camBtn, this.moodLabel);
 
     const status = document.createElement('div');
     status.className = 'hud-status';
@@ -139,6 +153,18 @@ export class HUD {
         this.startOverlay.classList.add('hidden');
         resolve();
       }, { once: true });
+    });
+
+    // ── Toggle button handlers ──
+    this.micBtn.addEventListener('click', () => {
+      this.micEnabled = !this.micEnabled;
+      this.micBtn.dataset.active = this.micEnabled ? 'on' : 'off';
+      eventBus.emit('media:micToggle', { enabled: this.micEnabled });
+    });
+    this.camBtn.addEventListener('click', () => {
+      this.camEnabled = !this.camEnabled;
+      this.camBtn.dataset.active = this.camEnabled ? 'on' : 'off';
+      eventBus.emit('media:cameraToggle', { enabled: this.camEnabled });
     });
 
     // ── Text input handlers ──
@@ -227,13 +253,12 @@ export class HUD {
   // ── Media status ──
 
   private setMediaStatus(mic: boolean, camera: boolean): void {
-    const parts: string[] = [];
-    parts.push(mic ? '\u{1F3A4}' : '\u{1F3A4}\u2715');
-    parts.push(camera ? '\u{1F4F7}' : '\u{1F4F7}\u2715');
-    this.mediaIcons.textContent = parts.join(' ');
-    this.mediaIcons.dataset.mic = mic ? 'on' : 'off';
-    this.mediaIcons.dataset.camera = camera ? 'on' : 'off';
-    this.mediaIcons.classList.add('visible');
+    this.micEnabled = mic;
+    this.camEnabled = camera;
+    this.micBtn.dataset.active = mic ? 'on' : 'off';
+    this.camBtn.dataset.active = camera ? 'on' : 'off';
+    this.micBtn.classList.add('visible');
+    this.camBtn.classList.add('visible');
   }
 
   // ── Mood methods ──

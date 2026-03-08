@@ -8,6 +8,7 @@ import { eventBus } from '@/core/event-bus.ts';
 import { CommManager } from '@/comm/protocol.ts';
 import { AudioManager } from '@/audio/audio-manager.ts';
 import { TTSPlayer } from '@/audio/tts-player.ts';
+import { ElevenLabsTTS } from '@/audio/elevenlabs-tts.ts';
 import { VoiceManager } from '@/voice/voice-manager.ts';
 import { Webcam } from '@/tracking/webcam.ts';
 import { FaceTracker } from '@/tracking/face-tracker.ts';
@@ -22,11 +23,16 @@ export class App {
   private comm: CommManager;
   private audioManager: AudioManager;
   private ttsPlayer: TTSPlayer;
+  private elevenLabs: ElevenLabsTTS;
   private voiceManager: VoiceManager;
   private webcam: Webcam;
   private faceTracker: FaceTracker;
   private hud: HUD;
   private envMesh: THREE.Mesh | null = null;
+
+  // Speaking-state completion tracking
+  private textStreamDone = false;
+  private audioPlaying = false;
 
   constructor(
     container: HTMLElement,
@@ -38,9 +44,10 @@ export class App {
     // Communication (Aelora backend)
     this.comm = new CommManager(config);
 
-    // Audio (kept for future TTS integration)
+    // Audio (TTS playback via AudioWorklet)
     this.audioManager = new AudioManager(config);
     this.ttsPlayer = new TTSPlayer(this.audioManager);
+    this.elevenLabs = new ElevenLabsTTS(config);
     this.voiceManager = new VoiceManager();
     this.webcam = new Webcam();
     this.faceTracker = new FaceTracker(this.webcam);
@@ -76,10 +83,12 @@ export class App {
 
     // Register frame updates
     this.sceneManager.onFrame((delta, elapsed) => {
+      // Pass audio amplitude directly — avoids event bus overhead at 60fps
+      this.avatar.setAmplitude(this.ttsPlayer.getAmplitude());
       this.avatar.update(delta, elapsed);
       this.avatarController.update(delta);
       if (this.envMesh) {
-        updateEnvironment(this.envMesh, elapsed);
+        updateEnvironment(this.envMesh, elapsed, delta);
       }
     });
 
@@ -98,62 +107,61 @@ export class App {
     });
 
     eventBus.on('comm:disconnected', () => {
+      this.resetSpeakingState();
       this.stateMachine.reset();
     });
 
     eventBus.on('comm:error', ({ code, message }) => {
       console.error(`[Patyna] Server error (${code}): ${message}`);
+      this.resetSpeakingState();
       this.stateMachine.reset();
     });
 
-    // ── LLM response flow (text streaming) ──
+    // ── LLM response flow (text + audio) ──
 
-    // First streaming token → transition to speaking (avatar animates while text streams)
+    // Text streaming — track progress, stay in thinking (avatar stays calm)
     eventBus.on('comm:textDelta', () => {
       if (this.stateMachine.state === 'thinking') {
+        this.textStreamDone = false;
+        this.audioPlaying = false;
+      }
+    });
+
+    // Text stream complete
+    eventBus.on('comm:textDone', () => {
+      this.textStreamDone = true;
+      this.tryFinishResponse();
+    });
+
+    // ── TTS audio playback — THIS triggers speaking state ──
+
+    eventBus.on('audio:playbackStart', () => {
+      this.audioPlaying = true;
+      // Transition to speaking when voice actually starts
+      const s = this.stateMachine.state;
+      if (s === 'thinking' || s === 'idle') {
         this.stateMachine.transition('speaking');
       }
     });
 
-    // Full response done → back to idle
-    eventBus.on('comm:textDone', () => {
-      if (this.stateMachine.state === 'speaking') {
-        this.stateMachine.transition('idle');
-      }
-    });
-
-    // ── Audio playback (future TTS) ──
-
+    // Audio playback finished — go idle if text is also done
     eventBus.on('audio:playbackEnd', () => {
-      if (this.stateMachine.state === 'speaking') {
-        this.stateMachine.transition('idle');
-      }
+      this.audioPlaying = false;
+      this.tryFinishResponse();
     });
 
     // ── Voice input ──
 
-    // User starts speaking → flush any TTS + go to listening
+    // User starts speaking → interrupt any TTS + go to listening
     eventBus.on('voice:speechStart', () => {
-      this.ttsPlayer.flush();
-      if (this.stateMachine.state === 'idle') {
-        this.stateMachine.transition('listening');
-      }
+      this.interruptAndListen();
     });
 
     // Final transcript → send to Aelora + transition to thinking
     eventBus.on('voice:transcript', ({ text, isFinal }) => {
       if (isFinal && this.comm.connected) {
         this.comm.sendMessage(text);
-
-        // Transition to thinking (handle both voice and text input paths)
-        const s = this.stateMachine.state;
-        if (s === 'idle') {
-          // Text input path: idle -> listening -> thinking
-          this.stateMachine.transition('listening');
-          this.stateMachine.transition('thinking');
-        } else if (s === 'listening') {
-          this.stateMachine.transition('thinking');
-        }
+        this.transitionToThinking();
       }
     });
 
@@ -162,6 +170,86 @@ export class App {
     eventBus.on('comm:mood', (mood) => {
       console.log(`[Patyna] Mood: ${mood.label} (${mood.emotion}/${mood.intensity})`);
     });
+
+    // ── Media toggles ──
+
+    eventBus.on('media:micToggle', ({ enabled }) => {
+      if (enabled) {
+        this.voiceManager.resume();
+      } else {
+        this.voiceManager.pause();
+      }
+    });
+
+    eventBus.on('media:cameraToggle', ({ enabled }) => {
+      if (enabled) {
+        this.faceTracker.start();
+      } else {
+        this.faceTracker.stop();
+      }
+    });
+  }
+
+  /**
+   * Interrupt current activity (flush TTS, stop speaking) and go to listening.
+   * Handles any current state: idle, listening, thinking, speaking.
+   */
+  private interruptAndListen(): void {
+    this.elevenLabs.close();
+    this.ttsPlayer.flush();
+    this.resetSpeakingState();
+
+    const s = this.stateMachine.state;
+    if (s === 'speaking' || s === 'thinking') {
+      // speaking → idle (valid) or thinking → idle (valid), then idle → listening
+      this.stateMachine.transition('idle');
+      this.stateMachine.transition('listening');
+    } else if (s === 'idle') {
+      this.stateMachine.transition('listening');
+    }
+    // If already listening, stay there
+  }
+
+  /**
+   * Transition to thinking state from wherever we are.
+   * Handles text input (from idle) and voice input (from listening).
+   */
+  private transitionToThinking(): void {
+    const s = this.stateMachine.state;
+    if (s === 'listening') {
+      this.stateMachine.transition('thinking');
+    } else if (s === 'idle') {
+      // Text input: idle → listening → thinking
+      this.stateMachine.transition('listening');
+      this.stateMachine.transition('thinking');
+    } else if (s === 'speaking' || s === 'thinking') {
+      // Interrupt current response and start new thinking cycle
+      this.elevenLabs.close();
+      this.ttsPlayer.flush();
+      this.resetSpeakingState();
+      this.stateMachine.transition('idle');
+      this.stateMachine.transition('listening');
+      this.stateMachine.transition('thinking');
+    }
+  }
+
+  /**
+   * Transition back to idle when BOTH text stream and audio playback
+   * are complete. Handles speaking→idle and thinking→idle (text-only).
+   */
+  private tryFinishResponse(): void {
+    if (!this.textStreamDone) return;          // Still streaming text
+    if (this.audioPlaying) return;             // Still playing audio
+    const s = this.stateMachine.state;
+    if (s === 'speaking' || s === 'thinking') {
+      this.stateMachine.transition('idle');
+    }
+  }
+
+  /** Reset speaking-state tracking flags. */
+  private resetSpeakingState(): void {
+    this.textStreamDone = false;
+    this.audioPlaying = false;
   }
 
   private async onReady(): Promise<void> {
@@ -237,6 +325,7 @@ export class App {
     this.faceTracker.destroy();
     this.webcam.destroy();
     await this.voiceManager.destroy();
+    this.elevenLabs.destroy();
     this.ttsPlayer.destroy();
     this.audioManager.close();
     this.comm.disconnect();
