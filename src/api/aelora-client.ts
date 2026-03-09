@@ -250,9 +250,9 @@ export class AeloraClient {
   private deriveBaseUrl(wsUrl: string): string {
     const url = new URL(wsUrl);
     url.protocol = url.protocol === 'wss:' ? 'https:' : 'http:';
-    // Strip the /ws path — REST API is at the root
-    url.pathname = '';
     url.search = '';
-    return url.origin;
+    // Strip trailing /ws but keep any path prefix (e.g. /aelora/ws → /aelora)
+    const path = url.pathname.replace(/\/ws\/?$/, '');
+    return `${url.origin}${path}`;
   }
 }
