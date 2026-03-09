@@ -51,7 +51,6 @@ function serveOnnxWasm(): Plugin {
 
 export default defineConfig({
   plugins: [serveOnnxWasm()],
-  base: '/patyna/',
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src'),
