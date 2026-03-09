@@ -53,6 +53,9 @@ export interface EventMap {
   'api:todos': { todos: TodoItem[] };
   'api:linearIssues': { issues: LinearIssue[] };
 
+  // Init progress
+  'init:progress': { pct: number; label: string };
+
   // Sidebar
   'sidebar:toggle': void;
 }

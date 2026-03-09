@@ -31,6 +31,8 @@ export class HUD {
   private sendBtn: HTMLButtonElement;
   private toast: HTMLDivElement;
   private startOverlay: HTMLDivElement;
+  private progressBar: HTMLDivElement;
+  private progressLabel: HTMLSpanElement;
   private toastTimer = 0;
   private userTextTimer = 0;
 
@@ -118,12 +120,27 @@ export class HUD {
     // ── Start overlay ──
     this.startOverlay = document.createElement('div');
     this.startOverlay.className = 'hud-start';
+
+    const startInner = document.createElement('div');
+    startInner.className = 'hud-start-inner';
+
     const startSpinner = document.createElement('div');
     startSpinner.className = 'hud-start-spinner';
     const startText = document.createElement('span');
     startText.className = 'hud-start-text';
     startText.textContent = 'Click to begin';
-    this.startOverlay.append(startSpinner, startText);
+
+    // Progress bar (hidden until loading starts)
+    const progressWrap = document.createElement('div');
+    progressWrap.className = 'hud-progress-wrap';
+    this.progressBar = document.createElement('div');
+    this.progressBar.className = 'hud-progress-bar';
+    this.progressLabel = document.createElement('span');
+    this.progressLabel.className = 'hud-progress-label';
+    progressWrap.appendChild(this.progressBar);
+
+    startInner.append(startSpinner, startText, progressWrap, this.progressLabel);
+    this.startOverlay.appendChild(startInner);
 
     this.overlay.append(top, this.toast, this.startOverlay);
     sceneWrap.appendChild(this.overlay);
@@ -176,9 +193,19 @@ export class HUD {
       }, { once: true });
     });
 
+    // Update progress bar during initialization
+    eventBus.on('init:progress', ({ pct, label }) => {
+      this.progressBar.style.width = `${pct}%`;
+      this.progressLabel.textContent = label;
+    });
+
     // Hide start overlay once backend is connected
     eventBus.on('comm:ready', () => {
-      this.startOverlay.classList.add('hidden');
+      this.progressBar.style.width = '100%';
+      this.progressLabel.textContent = 'Ready';
+      setTimeout(() => {
+        this.startOverlay.classList.add('hidden');
+      }, 400);
     });
 
     // ── Toggle button handlers ──

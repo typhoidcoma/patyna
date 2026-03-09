@@ -372,10 +372,12 @@ export class App {
     console.log('[Patyna] Session started');
 
     // Initialize audio (must happen after user gesture)
+    eventBus.emit('init:progress', { pct: 10, label: 'Preparing audio\u2026' });
     await this.ttsPlayer.init();
 
     // ── Single getUserMedia for both mic + camera ──
     // One permission prompt instead of two, more reliable across browsers
+    eventBus.emit('init:progress', { pct: 25, label: 'Requesting permissions\u2026' });
     let audioStream: MediaStream | undefined;
     let videoStream: MediaStream | undefined;
 
@@ -417,11 +419,13 @@ export class App {
     });
 
     // Initialize voice input (VAD + STT)
+    eventBus.emit('init:progress', { pct: 45, label: 'Loading voice model\u2026' });
     await this.voiceManager.init(audioStream);
 
     // Initialize face tracking with shared video stream
     if (videoStream) {
       try {
+        eventBus.emit('init:progress', { pct: 65, label: 'Loading face tracking\u2026' });
         const camOk = await this.webcam.startWithStream(videoStream);
         if (camOk) {
           await this.faceTracker.init();
@@ -434,6 +438,7 @@ export class App {
     }
 
     // Connect to Aelora backend
+    eventBus.emit('init:progress', { pct: 80, label: 'Connecting\u2026' });
     this.comm.connect();
   }
 

@@ -226,6 +226,18 @@
   pointer-events: none;
 }
 
+.hud-start-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.hud-start-inner > :first-child {
+  display: flex;
+  align-items: center;
+}
+
 .hud-start-text {
   font-size: 14px;
   color: var(--text-secondary);
@@ -273,6 +285,43 @@
 
 .hud-start.loading .hud-start-spinner {
   display: block;
+}
+
+/* Progress bar */
+.hud-progress-wrap {
+  width: 200px;
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: rgba(118, 116, 127, 0.12);
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity var(--duration-normal) var(--ease-smooth);
+}
+
+.hud-start.loading .hud-progress-wrap {
+  opacity: 1;
+}
+
+.hud-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(90deg, var(--accent-primary) 0%, #ff6198 100%);
+  transition: width 0.5s var(--ease-smooth);
+}
+
+.hud-progress-label {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  opacity: 0;
+  letter-spacing: 0.03em;
+  font-weight: var(--font-weight-medium);
+  transition: opacity var(--duration-normal) var(--ease-smooth);
+  user-select: none;
+}
+
+.hud-start.loading .hud-progress-label {
+  opacity: 0.7;
 }
 
 @keyframes spin {
