@@ -1,22 +1,14 @@
 import * as THREE from 'three';
 import { eventBus } from '@/core/event-bus.ts';
-
-// ── Mood → sparkle color mapping (bold, vivid) ──
-const MOOD_COLORS: Record<string, THREE.Color> = {
-  joy:          new THREE.Color('#FFD000'),
-  trust:        new THREE.Color('#4CAF50'),
-  fear:         new THREE.Color('#AB47BC'),
-  surprise:     new THREE.Color('#29B6F6'),
-  sadness:      new THREE.Color('#5C6BC0'),
-  disgust:      new THREE.Color('#66BB6A'),
-  anger:        new THREE.Color('#FF5252'),
-  anticipation: new THREE.Color('#FF9100'),
-};
+import { getMoodColor } from './mood-colors.ts';
 const DEFAULT_SPARKLE = new THREE.Color(1.0, 0.88, 0.55); // warm gold
+const DEFAULT_CONTOUR = new THREE.Color('#7ECDC0');        // soft teal
 
 // Smooth color transition state
 let targetSparkleColor = DEFAULT_SPARKLE.clone();
 let currentSparkleColor = DEFAULT_SPARKLE.clone();
+let targetContourColor = DEFAULT_CONTOUR.clone();
+let currentContourColor = DEFAULT_CONTOUR.clone();
 
 /**
  * Creates an ambient environment background.
@@ -36,6 +28,7 @@ export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
       uTeal: { value: new THREE.Color('#7ECDC0') },
       uGlow: { value: new THREE.Color('#D4A5C8') },
       uSparkleColor: { value: DEFAULT_SPARKLE.clone() },
+      uContourColor: { value: DEFAULT_CONTOUR.clone() },
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -49,6 +42,7 @@ export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
       uniform vec3 uTeal;
       uniform vec3 uGlow;
       uniform vec3 uSparkleColor;
+      uniform vec3 uContourColor;
       varying vec2 vUv;
 
       float hash(vec2 p) {
@@ -81,7 +75,7 @@ export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
         float line = 1.0 - contour;
 
         float contourFade = smoothstep(0.65, 0.1, dist);
-        vec3 contourColor = uTeal * line * 0.12 * contourFade;
+        vec3 contourColor = uContourColor * line * 0.12 * contourFade;
 
         // ── Sparkle particles (bright mint dots) ──
         float sparkle = 0.0;
@@ -159,11 +153,12 @@ export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
   mesh.position.z = -3;
   scene.add(mesh);
 
-  // Listen for mood changes → update sparkle target color
-  eventBus.on('comm:mood', ({ emotion }) => {
-    const c = MOOD_COLORS[emotion as string];
+  // Listen for mood changes → update sparkle + contour target colors
+  eventBus.on('comm:mood', ({ emotion, intensity }) => {
+    const c = getMoodColor(emotion as string, intensity as string);
     if (c) {
       targetSparkleColor.copy(c);
+      targetContourColor.copy(c);
     }
   });
 
@@ -178,4 +173,8 @@ export function updateEnvironment(mesh: THREE.Mesh, elapsed: number, delta: numb
   // Smooth-lerp sparkle color toward mood target
   currentSparkleColor.lerp(targetSparkleColor, Math.min(1, delta * 2.5));
   mat.uniforms.uSparkleColor.value.copy(currentSparkleColor);
+
+  // Smooth-lerp contour color toward mood target
+  currentContourColor.lerp(targetContourColor, Math.min(1, delta * 1.8));
+  mat.uniforms.uContourColor.value.copy(currentContourColor);
 }

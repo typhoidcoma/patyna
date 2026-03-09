@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { eventBus } from '@/core/event-bus.ts';
+import { getMoodColor } from './mood-colors.ts';
 import type { AppState } from '@/types/config.ts';
 
 /**
@@ -56,6 +57,11 @@ export class Avatar {
   // Mouth color targets for speaking
   private readonly mouthIdleColor = new THREE.Color('#1C8E77');
   private readonly mouthSpeakColor = new THREE.Color('#4AEDC4');
+
+  // Wing mood color — smooth lerp toward mood target
+  private readonly wingDefaultColor = new THREE.Color('#6EECC0');
+  private wingTargetColor = new THREE.Color('#6EECC0');
+  private wingCurrentColor = new THREE.Color('#6EECC0');
 
   // Stored base positions for reset each frame
   private eyeBaseY = 0;
@@ -120,6 +126,18 @@ export class Avatar {
         case 'present': this.targetPresenceBlend = 1.0; break;
         case 'away':    this.targetPresenceBlend = 0.4; break;
         case 'gone':    this.targetPresenceBlend = 0.1; break;
+      }
+    });
+
+    // Listen for mood changes → tint wings toward mood color
+    eventBus.on('comm:mood', ({ emotion, intensity, active }) => {
+      if (!active) {
+        this.wingTargetColor.copy(this.wingDefaultColor);
+        return;
+      }
+      const c = getMoodColor(emotion as string, intensity as string);
+      if (c) {
+        this.wingTargetColor.copy(c);
       }
     });
 
@@ -439,7 +457,7 @@ export class Avatar {
     this.bodyAnimGroup.rotation.z = Math.sin(elapsed * 0.9) * 0.012 * this.smoothIdleMix * pB;
 
     // ── Wing shimmer (continuous) — scaled by presence ──
-    this.updateWingShimmer(elapsed, this.smoothIdleMix * pB);
+    this.updateWingShimmer(elapsed, this.smoothIdleMix * pB, _delta);
 
     // ── Blink / eyes closing when gone ──
     this.updateBlink(elapsed, pB);
@@ -505,8 +523,8 @@ export class Avatar {
     this.coreGlowMat.opacity = (glowMin + (glowMax - glowMin) * t) * pB;
   }
 
-  /** Continuous wing flutter + shimmer */
-  private updateWingShimmer(elapsed: number, idleMix: number): void {
+  /** Continuous wing flutter + shimmer + mood color */
+  private updateWingShimmer(elapsed: number, idleMix: number, delta: number): void {
     const flutter1 = Math.sin(elapsed * 3.2) * 0.05;
     const flutter2 = Math.sin(elapsed * 3.8 + 0.5) * 0.03;
 
@@ -518,6 +536,10 @@ export class Avatar {
     // Soft opacity breathing — translucent shimmer
     const shimmer = Math.sin(elapsed * 1.8) * 0.5 + 0.5;
     this.wingMat.opacity = 0.42 + shimmer * 0.14;
+
+    // Smooth-lerp wing color toward mood target
+    this.wingCurrentColor.lerp(this.wingTargetColor, Math.min(1, delta * 2.0));
+    this.wingMat.color.copy(this.wingCurrentColor);
   }
 
   /** Deterministic blink — ~4s cycle, 0.15s duration. Eyes close when gone. */

@@ -1,0 +1,132 @@
+/* ════════════════════════════════════════════════════════════════
+   Emotion Color System — Plutchik wheel, 8 emotions x 3 intensities
+   ════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── JOY — golden / radiant ── */
+  --emotion-joy-low:  #F6D96B;  /* serenity */
+  --emotion-joy-mid:  #FFC83D;  /* joy */
+  --emotion-joy-high: #FF9F1C;  /* ecstasy */
+
+  /* ── TRUST — teal / clean green-blue ── */
+  --emotion-trust-low:  #8EDBC3;  /* acceptance */
+  --emotion-trust-mid:  #37C8AB;  /* trust */
+  --emotion-trust-high: #0E9F8A;  /* admiration */
+
+  /* ── FEAR — cold violet / indigo ── */
+  --emotion-fear-low:  #8B7BB8;  /* apprehension */
+  --emotion-fear-mid:  #5B4B8A;  /* fear */
+  --emotion-fear-high: #24153F;  /* terror */
+
+  /* ── SURPRISE — electric sky / cyan ── */
+  --emotion-surprise-low:  #B7E8FF;  /* distraction */
+  --emotion-surprise-mid:  #63D5FF;  /* surprise */
+  --emotion-surprise-high: #00A6E8;  /* amazement */
+
+  /* ── SADNESS — desaturated blue ── */
+  --emotion-sadness-low:  #9EB7D9;  /* pensiveness */
+  --emotion-sadness-mid:  #5E84C3;  /* sadness */
+  --emotion-sadness-high: #253C78;  /* grief */
+
+  /* ── DISGUST — murky olive / toxic green ── */
+  --emotion-disgust-low:  #A7B56B;  /* boredom */
+  --emotion-disgust-mid:  #6E8B3D;  /* disgust */
+  --emotion-disgust-high: #33461D;  /* loathing */
+
+  /* ── ANGER — red to crimson ── */
+  --emotion-anger-low:  #F28A7A;  /* annoyance */
+  --emotion-anger-mid:  #E3483A;  /* anger */
+  --emotion-anger-high: #8F1022;  /* rage */
+
+  /* ── ANTICIPATION — amber / charged orange ── */
+  --emotion-anticipation-low:  #F3C77A;  /* interest */
+  --emotion-anticipation-mid:  #F59E0B;  /* anticipation */
+  --emotion-anticipation-high: #C96A04;  /* vigilance */
+}
+
+/* ── Semantic ladder aliases ── */
+:root {
+  /* Joy ladder */
+  --emotion-serenity:  var(--emotion-joy-low);
+  --emotion-joy:       var(--emotion-joy-mid);
+  --emotion-ecstasy:   var(--emotion-joy-high);
+
+  /* Trust ladder */
+  --emotion-acceptance: var(--emotion-trust-low);
+  --emotion-trust:      var(--emotion-trust-mid);
+  --emotion-admiration: var(--emotion-trust-high);
+
+  /* Fear ladder */
+  --emotion-apprehension: var(--emotion-fear-low);
+  --emotion-fear:         var(--emotion-fear-mid);
+  --emotion-terror:       var(--emotion-fear-high);
+
+  /* Surprise ladder */
+  --emotion-distraction: var(--emotion-surprise-low);
+  --emotion-surprise:    var(--emotion-surprise-mid);
+  --emotion-amazement:   var(--emotion-surprise-high);
+
+  /* Sadness ladder */
+  --emotion-pensiveness: var(--emotion-sadness-low);
+  --emotion-sadness:     var(--emotion-sadness-mid);
+  --emotion-grief:       var(--emotion-sadness-high);
+
+  /* Disgust ladder */
+  --emotion-boredom:  var(--emotion-disgust-low);
+  --emotion-disgust:  var(--emotion-disgust-mid);
+  --emotion-loathing: var(--emotion-disgust-high);
+
+  /* Anger ladder */
+  --emotion-annoyance: var(--emotion-anger-low);
+  --emotion-anger:     var(--emotion-anger-mid);
+  --emotion-rage:      var(--emotion-anger-high);
+
+  /* Anticipation ladder */
+  --emotion-interest:     var(--emotion-anticipation-low);
+  --emotion-anticipation: var(--emotion-anticipation-mid);
+  --emotion-vigilance:    var(--emotion-anticipation-high);
+}
+
+/* ════════════════════════════════════════════════════════════════
+   HUD mood indicator — emotion × intensity color overrides
+   ════════════════════════════════════════════════════════════════ */
+
+/* Joy */
+.hud-mood[data-emotion="joy"][data-intensity="low"]  { color: var(--emotion-joy-low); }
+.hud-mood[data-emotion="joy"][data-intensity="mid"]  { color: var(--emotion-joy-mid); }
+.hud-mood[data-emotion="joy"][data-intensity="high"] { color: var(--emotion-joy-high); }
+
+/* Trust */
+.hud-mood[data-emotion="trust"][data-intensity="low"]  { color: var(--emotion-trust-low); }
+.hud-mood[data-emotion="trust"][data-intensity="mid"]  { color: var(--emotion-trust-mid); }
+.hud-mood[data-emotion="trust"][data-intensity="high"] { color: var(--emotion-trust-high); }
+
+/* Fear */
+.hud-mood[data-emotion="fear"][data-intensity="low"]  { color: var(--emotion-fear-low); }
+.hud-mood[data-emotion="fear"][data-intensity="mid"]  { color: var(--emotion-fear-mid); }
+.hud-mood[data-emotion="fear"][data-intensity="high"] { color: var(--emotion-fear-high); }
+
+/* Surprise */
+.hud-mood[data-emotion="surprise"][data-intensity="low"]  { color: var(--emotion-surprise-low); }
+.hud-mood[data-emotion="surprise"][data-intensity="mid"]  { color: var(--emotion-surprise-mid); }
+.hud-mood[data-emotion="surprise"][data-intensity="high"] { color: var(--emotion-surprise-high); }
+
+/* Sadness */
+.hud-mood[data-emotion="sadness"][data-intensity="low"]  { color: var(--emotion-sadness-low); }
+.hud-mood[data-emotion="sadness"][data-intensity="mid"]  { color: var(--emotion-sadness-mid); }
+.hud-mood[data-emotion="sadness"][data-intensity="high"] { color: var(--emotion-sadness-high); }
+
+/* Disgust */
+.hud-mood[data-emotion="disgust"][data-intensity="low"]  { color: var(--emotion-disgust-low); }
+.hud-mood[data-emotion="disgust"][data-intensity="mid"]  { color: var(--emotion-disgust-mid); }
+.hud-mood[data-emotion="disgust"][data-intensity="high"] { color: var(--emotion-disgust-high); }
+
+/* Anger */
+.hud-mood[data-emotion="anger"][data-intensity="low"]  { color: var(--emotion-anger-low); }
+.hud-mood[data-emotion="anger"][data-intensity="mid"]  { color: var(--emotion-anger-mid); }
+.hud-mood[data-emotion="anger"][data-intensity="high"] { color: var(--emotion-anger-high); }
+
+/* Anticipation */
+.hud-mood[data-emotion="anticipation"][data-intensity="low"]  { color: var(--emotion-anticipation-low); }
+.hud-mood[data-emotion="anticipation"][data-intensity="mid"]  { color: var(--emotion-anticipation-mid); }
+.hud-mood[data-emotion="anticipation"][data-intensity="high"] { color: var(--emotion-anticipation-high); }

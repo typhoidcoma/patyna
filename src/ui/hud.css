@@ -161,14 +161,7 @@
   opacity: 0.5;
 }
 
-.hud-mood[data-emotion="joy"] { color: #FFD740; }
-.hud-mood[data-emotion="trust"] { color: #81C784; }
-.hud-mood[data-emotion="fear"] { color: #CE93D8; }
-.hud-mood[data-emotion="surprise"] { color: #4FC3F7; }
-.hud-mood[data-emotion="sadness"] { color: #90A4AE; }
-.hud-mood[data-emotion="disgust"] { color: #A5D6A7; }
-.hud-mood[data-emotion="anger"] { color: #EF9A9A; }
-.hud-mood[data-emotion="anticipation"] { color: #FFB74D; }
+/* Emotion × intensity colors → emotions.css */
 
 .hud-mood.visible[data-emotion] {
   opacity: 0.7;

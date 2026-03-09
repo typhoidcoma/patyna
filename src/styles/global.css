@@ -1,5 +1,6 @@
 @import './reset.css';
 @import './variables.css';
+@import './emotions.css';
 
 body {
   font-family: var(--font-family);
