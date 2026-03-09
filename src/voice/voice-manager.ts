@@ -40,37 +40,41 @@ export class VoiceManager {
    *   If provided, VAD uses this instead of requesting mic access again.
    */
   async init(audioStream?: MediaStream): Promise<void> {
-    if (this._initialized) return;
-
     // Initialize VAD (requests mic permission internally if no stream given)
-    try {
-      await this.vad.init(audioStream);
-      this._micAvailable = true;
-    } catch (err) {
-      console.warn('[Voice] VAD init failed (mic may not be available):', err);
-      this._micAvailable = false;
-      // Continue without VAD — text input still works
+    // Allow re-init if previous attempt failed
+    if (!this._micAvailable) {
+      try {
+        await this.vad.init(audioStream);
+        this._micAvailable = true;
+      } catch (err) {
+        console.warn('[Voice] VAD init failed (mic may not be available):', err);
+        this._micAvailable = false;
+        throw err; // Propagate so caller knows init failed
+      }
     }
 
-    // Wire VAD events to STT lifecycle
-    eventBus.on('voice:speechStart', () => {
-      this.onSpeechStart();
-    });
+    if (!this._initialized) {
+      // Wire VAD events to STT lifecycle (only once)
+      eventBus.on('voice:speechStart', () => {
+        this.onSpeechStart();
+      });
 
-    eventBus.on('voice:speechEnd', () => {
-      this.onSpeechEnd();
-    });
+      eventBus.on('voice:speechEnd', () => {
+        this.onSpeechEnd();
+      });
 
-    // Pause VAD while TTS is playing to prevent echo
-    eventBus.on('audio:playbackStart', () => {
-      this.vad.pause();
-    });
+      // Pause VAD while TTS is playing to prevent echo
+      eventBus.on('audio:playbackStart', () => {
+        this.vad.pause();
+      });
 
-    eventBus.on('audio:playbackEnd', () => {
-      this.vad.resume();
-    });
+      eventBus.on('audio:playbackEnd', () => {
+        this.vad.resume();
+      });
 
-    this._initialized = true;
+      this._initialized = true;
+    }
+
     console.log('[Voice] Manager initialized');
   }
 
