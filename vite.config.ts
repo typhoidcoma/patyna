@@ -58,7 +58,7 @@ export default defineConfig({
   },
   server: {
     port: 3005,
-    allowedHosts: ['wendy-box-1.tailc1ea15.ts.net'],
+    allowedHosts: true, // allow any host (Tailscale, LAN, etc.)
   },
   assetsInclude: ['**/*.glb', '**/*.gltf'],
 });
