@@ -46,7 +46,7 @@ export interface PatynaConfig {
 
 export const DEFAULT_CONFIG: PatynaConfig = {
   websocket: {
-    url: 'wss://wendy-box-1.tailc1ea15.ts.net/ws',
+    url: 'wss://wendy-box-1.tailc1ea15.ts.net/aelora/ws',
     sessionId: import.meta.env.VITE_SESSION_ID ?? 'patyna-web',
     userId: import.meta.env.VITE_USER_ID,
     username: import.meta.env.VITE_USERNAME,
