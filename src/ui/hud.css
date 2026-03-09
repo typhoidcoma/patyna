@@ -161,8 +161,8 @@
   opacity: 0.5;
 }
 
-/* Emotion × intensity colors → emotions.css */
-
+/* When an emotion is active, bump opacity so the color reads clearly.
+   Actual text colors come from emotions.css (emotion × intensity matrix). */
 .hud-mood.visible[data-emotion] {
   opacity: 0.7;
 }

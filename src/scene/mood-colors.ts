@@ -1,8 +1,21 @@
 import * as THREE from 'three';
 
 /**
- * Plutchik wheel color palette — 8 emotions × 3 intensity levels.
- * Shared between environment shader and avatar materials.
+ * Plutchik wheel color palette — 8 primary emotions × 3 intensity levels.
+ *
+ * Each emotion has a **ladder** of three colors:
+ *   low  → desaturated / pastel  (e.g. serenity)
+ *   mid  → canonical             (e.g. joy)
+ *   high → deep / vivid          (e.g. ecstasy)
+ *
+ * Hex values are kept in sync with `src/styles/emotions.css` so the
+ * same palette drives both DOM (HUD label color) and WebGL (sparkles,
+ * contour lines, wing tint).
+ *
+ * Consumers:
+ *  - `environment.ts` — sparkle + contour shader uniforms
+ *  - `avatar.ts`      — wing material color
+ *  - `emotions.css`   — HUD mood label text color
  */
 export const MOOD_COLORS: Record<string, Record<string, THREE.Color>> = {
   joy: {
@@ -47,7 +60,14 @@ export const MOOD_COLORS: Record<string, Record<string, THREE.Color>> = {
   },
 };
 
-/** Look up the mood color for a given emotion + intensity, defaulting to mid. */
+/**
+ * Resolve an emotion + intensity pair to a THREE.Color.
+ *
+ * @param emotion   Primary emotion key (e.g. `"joy"`, `"anger"`).
+ * @param intensity Optional intensity level — `"low"`, `"mid"`, or `"high"`.
+ *                  Defaults to `"mid"` when omitted or unrecognised.
+ * @returns The matching color, or `null` if the emotion is unknown.
+ */
 export function getMoodColor(emotion: string, intensity?: string): THREE.Color | null {
   const ladder = MOOD_COLORS[emotion];
   if (!ladder) return null;

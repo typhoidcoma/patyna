@@ -1,5 +1,11 @@
 /* ════════════════════════════════════════════════════════════════
-   Emotion Color System — Plutchik wheel, 8 emotions x 3 intensities
+   Emotion Color System — Plutchik wheel, 8 emotions × 3 intensities
+
+   These CSS custom properties drive the HUD mood-label text color.
+   The same hex values are mirrored in `src/scene/mood-colors.ts` for
+   the WebGL side (sparkle particles, contour lines, wing tint).
+
+   Keep both files in sync when changing colors.
    ════════════════════════════════════════════════════════════════ */
 
 :root {

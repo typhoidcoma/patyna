@@ -5,9 +5,20 @@ import type { AppState } from '@/types/config.ts';
 
 /**
  * Patyna — Butterfly-core AI entity.
+ *
  * Floating mint-teal teardrop body with translucent shell, luminous inner core,
  * butterfly wings, antennae, and simplified dark-pool eyes.
- * Reacts visually to app state (idle/listening/thinking/speaking).
+ *
+ * Reactivity layers:
+ *  - **App state** (idle / listening / thinking / speaking) — drives core pulse,
+ *    wing flutter speed, mouth animation, and antenna excitement.
+ *  - **Mood** (`comm:mood` events) — tints wing color toward the Plutchik
+ *    emotion palette via smooth per-frame lerp. Reverts to default mint
+ *    when mood becomes inactive.
+ *  - **Presence** (present / away / gone) — global multiplier on all
+ *    animation amplitude and glow intensity.
+ *  - **Voice amplitude** — mouth shape, core brightness, wing flutter
+ *    intensity, and antenna tip glow react to real-time audio level.
  */
 export class Avatar {
   readonly group: THREE.Group;
@@ -191,8 +202,13 @@ export class Avatar {
     });
   }
 
-  /** Wing material — translucent saturated mint for ethereal butterfly feel.
-   *  Lower opacity keeps them delicate; deeper color avoids white-out on dark bg */
+  /**
+   * Wing material — translucent saturated mint for ethereal butterfly feel.
+   * Lower opacity keeps them delicate; deeper color avoids white-out on dark bg.
+   *
+   * The `.color` property is overwritten each frame by {@link updateWingShimmer}
+   * to smoothly lerp toward the active mood color (or back to default mint).
+   */
   private createWingMaterial(): THREE.MeshBasicMaterial {
     return new THREE.MeshBasicMaterial({
       color: '#6EECC0',

@@ -1,21 +1,31 @@
 import * as THREE from 'three';
 import { eventBus } from '@/core/event-bus.ts';
 import { getMoodColor } from './mood-colors.ts';
+
+// ── Default (no-mood) colors ──
 const DEFAULT_SPARKLE = new THREE.Color(1.0, 0.88, 0.55); // warm gold
 const DEFAULT_CONTOUR = new THREE.Color('#7ECDC0');        // soft teal
 
-// Smooth color transition state
+// ── Smooth color transition state ──
+// Target = where we're heading; current = what's on screen now.
+// Each frame, current lerps toward target for a fluid transition.
 let targetSparkleColor = DEFAULT_SPARKLE.clone();
 let currentSparkleColor = DEFAULT_SPARKLE.clone();
 let targetContourColor = DEFAULT_CONTOUR.clone();
 let currentContourColor = DEFAULT_CONTOUR.clone();
 
 /**
- * Creates an ambient environment background.
- * - Radial gradient: soft teal glow behind character, fading to dark edges
- * - Contour field: slow-moving topographic lines at low opacity
- * - Sparkle particles: floating luminous dots for ethereal feel
- * - Sparkle color responds to mood events
+ * Creates the ambient environment background plane.
+ *
+ * Visual layers (back to front):
+ *  1. **Radial gradient** — soft pink glow centered behind the avatar
+ *  2. **Contour field**   — slow-drifting topographic lines (mood-colored)
+ *  3. **Sparkle particles** — floating luminous dots (mood-colored)
+ *  4. **Star sparkles**   — rare, brighter accent points
+ *
+ * Colors respond to `comm:mood` events via {@link getMoodColor}.
+ * Both sparkle and contour colors lerp smoothly toward the active
+ * mood color (emotion + intensity) each frame.
  */
 export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
   const geometry = new THREE.PlaneGeometry(12, 12);
@@ -24,11 +34,10 @@ export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
     transparent: true,
     depthWrite: false,
     uniforms: {
-      uTime: { value: 0 },
-      uTeal: { value: new THREE.Color('#7ECDC0') },
-      uGlow: { value: new THREE.Color('#D4A5C8') },
-      uSparkleColor: { value: DEFAULT_SPARKLE.clone() },
-      uContourColor: { value: DEFAULT_CONTOUR.clone() },
+      uTime:         { value: 0 },
+      uGlow:         { value: new THREE.Color('#D4A5C8') },  // radial glow tint
+      uSparkleColor: { value: DEFAULT_SPARKLE.clone() },     // mood-driven
+      uContourColor: { value: DEFAULT_CONTOUR.clone() },     // mood-driven
     },
     vertexShader: /* glsl */ `
       varying vec2 vUv;
@@ -39,7 +48,6 @@ export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
     `,
     fragmentShader: /* glsl */ `
       uniform float uTime;
-      uniform vec3 uTeal;
       uniform vec3 uGlow;
       uniform vec3 uSparkleColor;
       uniform vec3 uContourColor;
@@ -165,16 +173,23 @@ export function createEnvironment(scene: THREE.Scene): THREE.Mesh {
   return mesh;
 }
 
-/** Update the environment shader — call from render loop */
+/**
+ * Per-frame update for the environment shader.
+ * Advances animation time and lerps mood-driven colors.
+ *
+ * @param mesh    The environment plane returned by {@link createEnvironment}.
+ * @param elapsed Total seconds since scene start (drives wave animation).
+ * @param delta   Seconds since last frame (drives color lerp speed).
+ */
 export function updateEnvironment(mesh: THREE.Mesh, elapsed: number, delta: number): void {
   const mat = mesh.material as THREE.ShaderMaterial;
   mat.uniforms.uTime.value = elapsed;
 
-  // Smooth-lerp sparkle color toward mood target
+  // Sparkles: faster lerp (~0.4 s to settle)
   currentSparkleColor.lerp(targetSparkleColor, Math.min(1, delta * 2.5));
   mat.uniforms.uSparkleColor.value.copy(currentSparkleColor);
 
-  // Smooth-lerp contour color toward mood target
+  // Contour lines: slightly slower lerp (~0.55 s) for organic feel
   currentContourColor.lerp(targetContourColor, Math.min(1, delta * 1.8));
   mat.uniforms.uContourColor.value.copy(currentContourColor);
 }
