@@ -1,5 +1,6 @@
-import type { AppState } from './config.ts';
+import type { AppState, PresenceState } from './config.ts';
 import type { MoodData } from './messages.ts';
+import type { UserProfile, SessionDetail } from '@/api/aelora-client.ts';
 
 export interface EventMap {
   // State changes
@@ -8,6 +9,9 @@ export interface EventMap {
   // Face tracking
   'face:position': { x: number; y: number; z: number };
   'face:lost': void;
+
+  // Presence
+  'presence:change': { from: PresenceState; to: PresenceState };
 
   // Voice
   'voice:speechStart': void;
@@ -24,6 +28,7 @@ export interface EventMap {
   'media:status': { mic: boolean; camera: boolean };
   'media:micToggle': { enabled: boolean };
   'media:cameraToggle': { enabled: boolean };
+  'media:ttsToggle': { enabled: boolean };
 
   // Communication (Aelora)
   'comm:connected': void;
@@ -33,4 +38,8 @@ export interface EventMap {
   'comm:textDone': { text: string };
   'comm:mood': MoodData;
   'comm:error': { code: string; message: string };
+
+  // API (Aelora REST)
+  'api:userProfile': { profile: UserProfile };
+  'api:sessionDetail': { session: SessionDetail };
 }

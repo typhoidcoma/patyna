@@ -12,6 +12,8 @@ import { ElevenLabsTTS } from '@/audio/elevenlabs-tts.ts';
 import { VoiceManager } from '@/voice/voice-manager.ts';
 import { Webcam } from '@/tracking/webcam.ts';
 import { FaceTracker } from '@/tracking/face-tracker.ts';
+import { PresenceManager } from '@/tracking/presence-manager.ts';
+import { AeloraClient } from '@/api/aelora-client.ts';
 import { HUD } from '@/ui/hud.ts';
 import { DEFAULT_CONFIG, type PatynaConfig } from '@/types/config.ts';
 
@@ -27,7 +29,10 @@ export class App {
   private voiceManager: VoiceManager;
   private webcam: Webcam;
   private faceTracker: FaceTracker;
+  private presenceManager: PresenceManager;
+  private aeloraClient: AeloraClient;
   private hud: HUD;
+  private config: PatynaConfig;
   private envMesh: THREE.Mesh | null = null;
 
   // Speaking-state completion tracking
@@ -38,6 +43,8 @@ export class App {
     container: HTMLElement,
     config: PatynaConfig = DEFAULT_CONFIG,
   ) {
+    this.config = config;
+
     // State machine
     this.stateMachine = new StateMachine();
 
@@ -51,6 +58,19 @@ export class App {
     this.voiceManager = new VoiceManager();
     this.webcam = new Webcam();
     this.faceTracker = new FaceTracker(this.webcam);
+
+    // Presence detection (consumes face tracker events)
+    this.presenceManager = new PresenceManager(config.presence);
+
+    // Aelora REST API client
+    this.aeloraClient = new AeloraClient({
+      wsUrl: config.websocket.url,
+      baseUrl: config.api.baseUrl,
+      apiKey: config.websocket.apiKey,
+      sessionId: config.websocket.sessionId,
+      userId: config.websocket.userId,
+      username: config.websocket.username,
+    });
 
     // ── Layout: scene wrapper (flex:1) + panel below ──
     const sceneWrap = document.createElement('div');
@@ -104,6 +124,9 @@ export class App {
 
     eventBus.on('comm:ready', ({ sessionId }) => {
       console.log(`[Patyna] Session bound: ${sessionId}`);
+      if (this.config.api.fetchMemoryOnConnect) {
+        this.fetchInitialMemory();
+      }
     });
 
     eventBus.on('comm:disconnected', () => {
@@ -184,8 +207,19 @@ export class App {
     eventBus.on('media:cameraToggle', ({ enabled }) => {
       if (enabled) {
         this.faceTracker.start();
+        this.presenceManager.resume();
       } else {
         this.faceTracker.stop();
+        this.presenceManager.pause();
+      }
+    });
+
+    // ── Presence ──
+
+    eventBus.on('presence:change', ({ from, to }) => {
+      console.log(`[Patyna] Presence: ${from} → ${to}`);
+      if (this.config.presence.notifyBackend && this.comm.connected) {
+        this.comm.sendPresence(to);
       }
     });
   }
@@ -252,6 +286,35 @@ export class App {
     this.audioPlaying = false;
   }
 
+  /** Fetch user profile and session data from Aelora REST API (non-blocking). */
+  private async fetchInitialMemory(): Promise<void> {
+    const { userId, sessionId } = this.config.websocket;
+
+    const promises: Promise<void>[] = [];
+
+    if (userId) {
+      promises.push(
+        this.aeloraClient.getUser(userId).then((profile) => {
+          if (profile) {
+            console.log(`[Patyna] User profile loaded: ${profile.username} (${profile.messageCount} messages)`);
+            eventBus.emit('api:userProfile', { profile });
+          }
+        }),
+      );
+    }
+
+    promises.push(
+      this.aeloraClient.getSession(sessionId).then((session) => {
+        if (session) {
+          console.log(`[Patyna] Session data loaded: ${session.channelId}`);
+          eventBus.emit('api:sessionDetail', { session });
+        }
+      }),
+    );
+
+    await Promise.allSettled(promises);
+  }
+
   private async onReady(): Promise<void> {
     console.log('[Patyna] Session started');
 
@@ -310,6 +373,7 @@ export class App {
         if (camOk) {
           await this.faceTracker.init();
           this.faceTracker.start();
+          this.presenceManager.start();
         }
       } catch (err) {
         console.warn('[Patyna] Face tracking unavailable:', err);
@@ -322,6 +386,7 @@ export class App {
 
   /** Tear down all resources. */
   async destroy(): Promise<void> {
+    this.presenceManager.destroy();
     this.faceTracker.destroy();
     this.webcam.destroy();
     await this.voiceManager.destroy();

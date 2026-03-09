@@ -46,6 +46,12 @@ export class Avatar {
   private currentState: AppState = 'idle';
   private stateBlend = 0;
   private audioAmplitude = 0;
+  private targetAmplitude = 0;
+  private smoothIdleMix = 1.0;
+
+  // Presence — global multiplier on all animation/glow
+  private presenceBlend = 1.0;
+  private targetPresenceBlend = 1.0;
 
   // Mouth color targets for speaking
   private readonly mouthIdleColor = new THREE.Color('#1C8E77');
@@ -108,12 +114,20 @@ export class Avatar {
       this.stateBlend = 0;
     });
 
+    // Listen for presence changes — drive visual dimming
+    eventBus.on('presence:change', ({ to }) => {
+      switch (to) {
+        case 'present': this.targetPresenceBlend = 1.0; break;
+        case 'away':    this.targetPresenceBlend = 0.4; break;
+        case 'gone':    this.targetPresenceBlend = 0.1; break;
+      }
+    });
+
   }
 
   /** Set audio amplitude directly from render loop (avoids event bus at 60fps) */
   setAmplitude(value: number): void {
-    // Smooth toward target (prevents jitter, gives natural feel)
-    this.audioAmplitude += (value - this.audioAmplitude) * 0.35;
+    this.targetAmplitude = value;
   }
 
   // ══════════════════════════════════════
@@ -390,8 +404,22 @@ export class Avatar {
     const blendSpeed = this.currentState === 'speaking' ? 5.0 : 3.0;
     this.stateBlend = Math.min(1, this.stateBlend + _delta * blendSpeed);
 
-    // Gentle decay when no amplitude events arrive (e.g. audio ended)
-    this.audioAmplitude *= Math.max(0, 1 - _delta * 6.0);
+    // ── Frame-rate independent amplitude smoothing ──
+    // Asymmetric: fast attack (~60ms) so speech is responsive,
+    // gentler release (~160ms) so gaps between words don't flicker
+    const ampLerp = this.targetAmplitude > this.audioAmplitude
+      ? 1 - Math.exp(-14 * _delta)    // attack
+      : 1 - Math.exp(-6 * _delta);    // release
+    this.audioAmplitude += (this.targetAmplitude - this.audioAmplitude) * ampLerp;
+
+    // ── Presence blend: smooth transition (dim slow, brighten fast) ──
+    const presenceSpeed = this.targetPresenceBlend > this.presenceBlend ? 3.0 : 0.8;
+    this.presenceBlend += (this.targetPresenceBlend - this.presenceBlend) * (1 - Math.exp(-presenceSpeed * _delta));
+    const pB = this.presenceBlend; // shorthand
+
+    // ── Smooth idleMix transition (avoids jarring snap on state change) ──
+    const targetIdleMix = this.currentState === 'speaking' ? 0.15 : 1.0;
+    this.smoothIdleMix += (targetIdleMix - this.smoothIdleMix) * (1 - Math.exp(-5 * _delta));
 
     // Reset animated properties to base values
     this.bodyAnimGroup.position.set(0, 0, 0);
@@ -400,26 +428,24 @@ export class Avatar {
     this.rightEyeGroup.position.y = this.eyeBaseY;
     this.mouth.scale.set(1, 1, 1);
 
-    const idleMix = this.currentState === 'speaking' ? 0.15 : 1.0;
-
     // ── Core pulse (always active, speed varies by state) ──
-    this.updateCorePulse(elapsed);
+    this.updateCorePulse(elapsed, pB);
 
-    // ── Hover bob (~3.5s cycle) ──
+    // ── Hover bob (~3.5s cycle) — scaled by presence ──
     const bobT = Math.sin(elapsed * 0.285 * Math.PI * 2);
-    this.bodyAnimGroup.position.y = bobT * 0.015 * idleMix;
+    this.bodyAnimGroup.position.y = bobT * 0.015 * this.smoothIdleMix * pB;
 
     // ── Micro-rotation sway ──
-    this.bodyAnimGroup.rotation.z = Math.sin(elapsed * 0.9) * 0.012 * idleMix;
+    this.bodyAnimGroup.rotation.z = Math.sin(elapsed * 0.9) * 0.012 * this.smoothIdleMix * pB;
 
-    // ── Wing shimmer (continuous) ──
-    this.updateWingShimmer(elapsed, idleMix);
+    // ── Wing shimmer (continuous) — scaled by presence ──
+    this.updateWingShimmer(elapsed, this.smoothIdleMix * pB);
 
-    // ── Blink ──
-    this.updateBlink(elapsed);
+    // ── Blink / eyes closing when gone ──
+    this.updateBlink(elapsed, pB);
 
-    // ── Antenna sway ──
-    this.updateAntennae(elapsed);
+    // ── Antenna sway — scaled by presence ──
+    this.updateAntennae(elapsed, pB);
 
     // ── State-specific reactions ──
     switch (this.currentState) {
@@ -436,7 +462,7 @@ export class Avatar {
   }
 
   /** Soft body + core glow pulse — the whole body breathes light */
-  private updateCorePulse(elapsed: number): void {
+  private updateCorePulse(elapsed: number, pB: number = 1): void {
     let speed: number;
     let bodyMin: number;
     let bodyMax: number;
@@ -474,9 +500,9 @@ export class Avatar {
     }
 
     const t = Math.sin(elapsed * speed * Math.PI * 2) * 0.5 + 0.5;
-    this.bodyMat.emissiveIntensity = bodyMin + (bodyMax - bodyMin) * t;
-    this.coreMat.emissiveIntensity = coreMin + (coreMax - coreMin) * t;
-    this.coreGlowMat.opacity = glowMin + (glowMax - glowMin) * t;
+    this.bodyMat.emissiveIntensity = (bodyMin + (bodyMax - bodyMin) * t) * pB;
+    this.coreMat.emissiveIntensity = (coreMin + (coreMax - coreMin) * t) * pB;
+    this.coreGlowMat.opacity = (glowMin + (glowMax - glowMin) * t) * pB;
   }
 
   /** Continuous wing flutter + shimmer */
@@ -494,8 +520,8 @@ export class Avatar {
     this.wingMat.opacity = 0.42 + shimmer * 0.14;
   }
 
-  /** Deterministic blink — ~4s cycle, 0.15s duration */
-  private updateBlink(elapsed: number): void {
+  /** Deterministic blink — ~4s cycle, 0.15s duration. Eyes close when gone. */
+  private updateBlink(elapsed: number, pB: number = 1): void {
     const blinkCycle = 4.0;
     const blinkDuration = 0.15;
     const phase = elapsed % blinkCycle;
@@ -506,20 +532,27 @@ export class Avatar {
       eyeScaleY = 1.0 - Math.sin(t * Math.PI);
       eyeScaleY = Math.max(0.05, eyeScaleY);
     }
+
+    // Close eyes when presence fades (pB < 0.3 = fully closed)
+    if (pB < 1.0) {
+      const eyeClose = Math.max(0.05, pB / 0.4); // 0.4→1.0 stays open, below 0.4 → closes
+      eyeScaleY *= Math.min(1.0, eyeClose);
+    }
+
     this.leftEyeGroup.scale.y = eyeScaleY;
     this.rightEyeGroup.scale.y = eyeScaleY;
   }
 
   /** Gentle antenna sway + tip glow pulse */
-  private updateAntennae(elapsed: number): void {
-    this.antennaLeft.rotation.z = Math.sin(elapsed * 1.2) * 0.08;
-    this.antennaLeft.rotation.x = Math.sin(elapsed * 0.9 + 0.5) * 0.04;
-    this.antennaRight.rotation.z = Math.sin(elapsed * 1.2 + 1.0) * 0.08;
-    this.antennaRight.rotation.x = Math.sin(elapsed * 0.9 + 1.5) * 0.04;
+  private updateAntennae(elapsed: number, pB: number = 1): void {
+    this.antennaLeft.rotation.z = Math.sin(elapsed * 1.2) * 0.08 * pB;
+    this.antennaLeft.rotation.x = Math.sin(elapsed * 0.9 + 0.5) * 0.04 * pB;
+    this.antennaRight.rotation.z = Math.sin(elapsed * 1.2 + 1.0) * 0.08 * pB;
+    this.antennaRight.rotation.x = Math.sin(elapsed * 0.9 + 1.5) * 0.04 * pB;
 
-    // Tip glow pulse (offset from core) — bright pulsing beacons
+    // Tip glow pulse (offset from core) — dimmed by presence
     const tipGlow = Math.sin(elapsed * 1.8 + 0.3) * 0.5 + 0.5;
-    this.antennaTipMat.opacity = 0.6 + tipGlow * 0.4;
+    this.antennaTipMat.opacity = (0.6 + tipGlow * 0.4) * pB;
   }
 
   // ── State-specific overrides ──

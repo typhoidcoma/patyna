@@ -11,34 +11,40 @@ import { readFileSync } from 'fs';
 function serveOnnxWasm(): Plugin {
   const onnxDist = resolve(__dirname, 'node_modules/onnxruntime-web/dist');
 
+  // Shared middleware for both dev and preview servers
+  const onnxMiddleware = (req: any, res: any, next: any) => {
+    const url = req.url ?? '';
+
+    // Serve the ONNX WASM JS glue module
+    if (url.includes('ort-wasm-simd-threaded.mjs')) {
+      try {
+        const content = readFileSync(resolve(onnxDist, 'ort-wasm-simd-threaded.mjs'), 'utf-8');
+        res.setHeader('Content-Type', 'application/javascript');
+        res.end(content);
+        return;
+      } catch { /* fall through */ }
+    }
+
+    // Serve the ONNX WASM binary
+    if (url.includes('ort-wasm-simd-threaded.wasm')) {
+      try {
+        const content = readFileSync(resolve(onnxDist, 'ort-wasm-simd-threaded.wasm'));
+        res.setHeader('Content-Type', 'application/wasm');
+        res.end(content);
+        return;
+      } catch { /* fall through */ }
+    }
+
+    next();
+  };
+
   return {
     name: 'serve-onnx-wasm',
     configureServer(server) {
-      server.middlewares.use((req, res, next) => {
-        const url = req.url ?? '';
-
-        // Serve the ONNX WASM JS glue module
-        if (url.includes('ort-wasm-simd-threaded.mjs')) {
-          try {
-            const content = readFileSync(resolve(onnxDist, 'ort-wasm-simd-threaded.mjs'), 'utf-8');
-            res.setHeader('Content-Type', 'application/javascript');
-            res.end(content);
-            return;
-          } catch { /* fall through */ }
-        }
-
-        // Serve the ONNX WASM binary
-        if (url.includes('ort-wasm-simd-threaded.wasm')) {
-          try {
-            const content = readFileSync(resolve(onnxDist, 'ort-wasm-simd-threaded.wasm'));
-            res.setHeader('Content-Type', 'application/wasm');
-            res.end(content);
-            return;
-          } catch { /* fall through */ }
-        }
-
-        next();
-      });
+      server.middlewares.use(onnxMiddleware);
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(onnxMiddleware);
     },
   };
 }

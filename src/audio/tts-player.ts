@@ -55,7 +55,7 @@ export class TTSPlayer {
     // AnalyserNode for per-frame amplitude (worklet → analyser → destination)
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 256;
-    this.analyser.smoothingTimeConstant = 0.4;
+    this.analyser.smoothingTimeConstant = 0.75;
     this.analyserData = new Uint8Array(this.analyser.fftSize);
 
     this.workletNode.connect(this.analyser);

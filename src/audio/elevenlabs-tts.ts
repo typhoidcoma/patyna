@@ -27,6 +27,7 @@ export class ElevenLabsTTS {
   private textBuffer = '';
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingDone = false;
+  private muted = false;
 
   // Buffer text for ~200ms before sending to get better prosody
   private readonly FLUSH_DELAY_MS = 200;
@@ -47,6 +48,15 @@ export class ElevenLabsTTS {
     // End of text stream — flush remaining text + signal EOS
     eventBus.on('comm:textDone', () => {
       this.onTextDone();
+    });
+
+    // TTS toggle — when muted, no ElevenLabs connections are made (saves credits)
+    eventBus.on('media:ttsToggle', ({ enabled }) => {
+      this.muted = !enabled;
+      if (this.muted) {
+        this.close();
+      }
+      console.log(`[ElevenLabs] TTS ${enabled ? 'enabled' : 'muted'}`);
     });
 
     console.log('[ElevenLabs] TTS initialized');
@@ -149,6 +159,9 @@ export class ElevenLabsTTS {
 
   /** Buffer incoming text tokens and flush periodically for better prosody. */
   private onTextDelta(text: string): void {
+    // When muted, silently drop all text — no ElevenLabs connection, no credits used
+    if (this.muted) return;
+
     // Start connection on first token
     if (this.state === 'idle') {
       this.textBuffer = text;

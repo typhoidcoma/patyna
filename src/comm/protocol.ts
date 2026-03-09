@@ -6,7 +6,7 @@
  * Outgoing: message (user text), clear.
  */
 
-import type { PatynaConfig } from '@/types/config.ts';
+import type { PatynaConfig, PresenceState } from '@/types/config.ts';
 import type { ClientMessage, MoodData } from '@/types/messages.ts';
 import { eventBus } from '@/core/event-bus.ts';
 import { WebSocketClient, type FrameHandler } from './websocket-client.ts';
@@ -65,6 +65,11 @@ export class CommManager {
   /** Clear conversation history on the server. */
   clearHistory(): void {
     this.sendRaw({ type: 'clear' });
+  }
+
+  /** Notify backend of user presence change. */
+  sendPresence(status: PresenceState): void {
+    this.sendRaw({ type: 'presence', status });
   }
 
   /** Send any client message. */

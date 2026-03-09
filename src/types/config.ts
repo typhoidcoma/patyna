@@ -1,4 +1,5 @@
 export type AppState = 'idle' | 'listening' | 'thinking' | 'speaking';
+export type PresenceState = 'present' | 'away' | 'gone';
 
 export interface PatynaConfig {
   websocket: {
@@ -32,12 +33,24 @@ export interface PatynaConfig {
     model: string;
     outputFormat: string;
   };
+  presence: {
+    awayTimeoutMs: number;
+    goneTimeoutMs: number;
+    notifyBackend: boolean;
+  };
+  api: {
+    baseUrl?: string;
+    fetchMemoryOnConnect: boolean;
+  };
 }
 
 export const DEFAULT_CONFIG: PatynaConfig = {
   websocket: {
     url: 'wss://brainso101.tail0c86da.ts.net/ws',
-    sessionId: 'patyna-web',
+    sessionId: import.meta.env.VITE_SESSION_ID ?? 'patyna-web',
+    userId: import.meta.env.VITE_USER_ID,
+    username: import.meta.env.VITE_USERNAME,
+    apiKey: import.meta.env.VITE_AELORA_API_KEY,
     reconnectDelay: 1000,
     maxReconnectDelay: 30000,
   },
@@ -62,5 +75,13 @@ export const DEFAULT_CONFIG: PatynaConfig = {
     voiceId: import.meta.env.VITE_ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM',
     model: 'eleven_flash_v2_5',
     outputFormat: 'pcm_24000',
+  },
+  presence: {
+    awayTimeoutMs: 15_000,
+    goneTimeoutMs: 120_000,
+    notifyBackend: true,
+  },
+  api: {
+    fetchMemoryOnConnect: true,
   },
 };

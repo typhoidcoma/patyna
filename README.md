@@ -9,6 +9,9 @@ Real-time AI avatar with voice interaction. A mint-teal butterfly-core entity th
 - **Audio-reactive animation** — Mouth, wings, core glow, and antenna tips all react to the actual audio waveform per-frame using Web Audio AnalyserNode
 - **Face tracking** — Camera-based head tracking via MediaPipe, avatar follows your gaze
 - **Mood system** — Backend sends emotional state; environment sparkles change color to match mood
+- **Presence detection** — Camera-based user presence tracking (present/away/gone) with avatar dimming and eye-close
+- **Aelora memory API** — REST client for user profiles, sessions, memory facts, notes, and mood
+- **TTS toggle** — Mute ElevenLabs voice to save credits; text responses still display
 - **Text input** — Type messages as an alternative to voice
 
 ## Architecture
@@ -40,16 +43,20 @@ src/
     web-speech-stt.ts       # Web Speech API implementation
 
   comm/
-    protocol.ts             # Aelora backend protocol (WebSocket)
+    protocol.ts             # Aelora backend protocol (WebSocket + presence)
     websocket-client.ts     # Reconnecting WebSocket wrapper
     message-codec.ts        # JSON message encoding/decoding
+
+  api/
+    aelora-client.ts        # Aelora REST API client (users, sessions, memory, notes, mood)
 
   tracking/
     webcam.ts               # Camera stream management
     face-tracker.ts         # MediaPipe face landmark detection
+    presence-manager.ts     # User presence detection (present/away/gone)
 
   ui/
-    hud.ts                  # HUD overlay + input panel
+    hud.ts                  # HUD overlay + input panel + media toggles
     hud.css                 # HUD styles
 
   types/
@@ -71,6 +78,19 @@ idle --> listening --> thinking --> speaking --> idle
 - **thinking** — Stays visually calm (same as idle) while waiting for audio
 - **speaking** — Audio-reactive: mouth tracks amplitude, wings flutter with voice intensity, antenna tips glow brighter with louder audio, core pulses
 
+## Presence states
+
+```
+present --> away (15s no face) --> gone (2min no face)
+    ^_________________________________|  (face detected)
+```
+
+- **present** — Full animation and glow
+- **away** — Dimmed to 40%, subtle idle only
+- **gone** — Dimmed to 10%, eyes closed
+
+Camera toggle off pauses detection (doesn't trigger away/gone).
+
 ## Audio pipeline
 
 ```
@@ -81,7 +101,7 @@ ElevenLabs WS --> base64 decode --> PCM16->Float32 --> AudioWorklet --> Analyser
                                                               avatar mouth, wings, glow
 ```
 
-The AnalyserNode provides true per-frame waveform data synced with audio output — no lag, no coarse per-chunk averaging.
+The AnalyserNode (smoothingTimeConstant=0.75) provides per-frame waveform data synced with audio output. Amplitude smoothing uses frame-rate independent exponential lerp with asymmetric attack/release.
 
 ## Tech stack
 
@@ -91,6 +111,7 @@ The AnalyserNode provides true per-frame waveform data synced with audio output 
 - **VAD** — @ricky0123/vad-web for voice activity detection
 - **Web Speech API** — Browser-native speech-to-text
 - **ElevenLabs** — Streaming text-to-speech via WebSocket
+- **Aelora** — AI backend (WebSocket chat + REST API for memory/users/sessions)
 - **Vite** — Dev server and bundler
 - **TypeScript** — Full type safety throughout
 
@@ -100,16 +121,29 @@ The AnalyserNode provides true per-frame waveform data synced with audio output 
 npm install
 ```
 
-Create `.env` with your API keys:
+Create `.env`:
 
 ```
-VITE_AELORA_WS=wss://your-backend-url
-VITE_ELEVENLABS_KEY=your-elevenlabs-api-key
+VITE_ELEVENLABS_API_KEY=your-elevenlabs-api-key
+VITE_ELEVENLABS_VOICE_ID=your-voice-id
+
+# Aelora backend identity
+VITE_AELORA_API_KEY=your-api-key
+VITE_USER_ID=your-user-id
+VITE_USERNAME=YourName
+VITE_SESSION_ID=patyna-web
 ```
 
 ```bash
-npm run dev      # Start dev server (default: port 3005)
+npm run dev      # Start dev server (port 3000)
 npm run build    # Production build
+npm run preview  # Preview production build (port 4173)
 ```
 
 Open in browser, click "Click to begin", grant mic + camera permissions.
+
+## HUD controls
+
+- **🎤** — Toggle microphone (VAD + STT)
+- **📷** — Toggle camera (face tracking + presence)
+- **🔊** — Toggle ElevenLabs TTS (mute saves credits, text responses still show)

@@ -16,8 +16,10 @@ export class HUD {
   private connDot: HTMLDivElement;
   private micBtn: HTMLButtonElement;
   private camBtn: HTMLButtonElement;
+  private ttsBtn: HTMLButtonElement;
   private micEnabled = false;
   private camEnabled = false;
+  private ttsEnabled = true;
   private moodLabel: HTMLSpanElement;
   private responseArea: HTMLDivElement;
   private responseText: HTMLDivElement;
@@ -75,10 +77,17 @@ export class HUD {
     this.camBtn.textContent = '\u{1F4F7}';
     this.camBtn.title = 'Toggle camera';
 
+    this.ttsBtn = document.createElement('button');
+    this.ttsBtn.className = 'hud-toggle-btn visible';
+    this.ttsBtn.dataset.kind = 'tts';
+    this.ttsBtn.dataset.active = 'on';
+    this.ttsBtn.textContent = '\u{1F50A}';
+    this.ttsBtn.title = 'Toggle voice (ElevenLabs TTS)';
+
     this.moodLabel = document.createElement('span');
     this.moodLabel.className = 'hud-mood';
 
-    leftGroup.append(wordmark, this.connDot, this.micBtn, this.camBtn, this.moodLabel);
+    leftGroup.append(wordmark, this.connDot, this.micBtn, this.camBtn, this.ttsBtn, this.moodLabel);
 
     const status = document.createElement('div');
     status.className = 'hud-status';
@@ -165,6 +174,11 @@ export class HUD {
       this.camEnabled = !this.camEnabled;
       this.camBtn.dataset.active = this.camEnabled ? 'on' : 'off';
       eventBus.emit('media:cameraToggle', { enabled: this.camEnabled });
+    });
+    this.ttsBtn.addEventListener('click', () => {
+      this.ttsEnabled = !this.ttsEnabled;
+      this.ttsBtn.dataset.active = this.ttsEnabled ? 'on' : 'off';
+      eventBus.emit('media:ttsToggle', { enabled: this.ttsEnabled });
     });
 
     // ── Text input handlers ──

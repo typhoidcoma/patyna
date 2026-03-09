@@ -10,7 +10,8 @@
 export type ClientMessage =
   | { type: 'init'; sessionId: string; userId?: string; username?: string }
   | { type: 'message'; content: string }
-  | { type: 'clear' };
+  | { type: 'clear' }
+  | { type: 'presence'; status: 'present' | 'away' | 'gone' };
 
 // ── Server → Client ──
 
