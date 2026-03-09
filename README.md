@@ -1,121 +1,139 @@
 # Patyna
 
-Real-time AI avatar with voice interaction. A mint-teal butterfly-core entity that listens, thinks, and speaks with audio-reactive animations.
+Real-time AI avatar with voice interaction. Mint-teal butterfly-core entity that listens, thinks, and speaks.
 
-## What it does
+<details>
+<summary>Features</summary>
 
-- **3D Avatar** — Pear-shaped body, butterfly wings, antennae with glowing tips, dark-pool eyes with sparkle highlights
-- **Voice conversation** — Speak to Patyna via microphone (VAD + Web Speech STT), get voice responses via ElevenLabs TTS
-- **Audio-reactive animation** — Mouth, wings, core glow, and antenna tips all react to the actual audio waveform per-frame using Web Audio AnalyserNode
-- **Face tracking** — Camera-based head tracking via MediaPipe, avatar follows your gaze
-- **Mood system** — Backend sends emotional state; environment sparkles change color to match mood
-- **Presence detection** — Camera-based user presence tracking (present/away/gone) with avatar dimming and eye-close
-- **Aelora memory API** — REST client for user profiles, sessions, memory facts, notes, and mood
-- **TTS toggle** — Mute ElevenLabs voice to save credits; text responses still display
-- **Text input** — Type messages as an alternative to voice
+- 3D avatar: pear body, butterfly wings, glowing antenna tips, sparkle eyes
+- Voice conversation via VAD + Web Speech STT + ElevenLabs TTS
+- Audio-reactive animation via Web Audio AnalyserNode
+- Face tracking via MediaPipe
+- Mood-colored environment sparkles
+- Presence detection (present/away/gone) with avatar dimming
+- Aelora memory API integration
+- TTS toggle to mute ElevenLabs and save credits
+- Text input fallback
 
-## Architecture
+</details>
+
+<details>
+<summary>Architecture</summary>
 
 ```
 src/
-  app.ts                    # Main orchestrator — wires everything together
-  main.ts                   # Entry point — mounts App into #app
+  app.ts                    # Main orchestrator
+  main.ts                   # Entry point
 
   core/
-    state-machine.ts        # idle -> listening -> thinking -> speaking
-    event-bus.ts            # Typed pub/sub for decoupled communication
+    state-machine.ts        # idle > listening > thinking > speaking
+    event-bus.ts            # Typed pub/sub
 
   scene/
-    scene-manager.ts        # Three.js renderer, camera, lights, resize
-    avatar.ts               # 3D butterfly avatar — geometry, materials, animation
+    scene-manager.ts        # Three.js renderer, camera, lights
+    avatar.ts               # 3D butterfly avatar
     avatar-controller.ts    # Face-tracking gaze controller
-    environment.ts          # Shader-based background with mood-colored sparkles
+    environment.ts          # Shader background + mood sparkles
 
   audio/
     audio-manager.ts        # AudioContext lifecycle
-    tts-player.ts           # AudioWorklet playback + AnalyserNode for amplitude
+    tts-player.ts           # AudioWorklet + AnalyserNode
     elevenlabs-tts.ts       # ElevenLabs WebSocket streaming TTS
 
   voice/
     voice-manager.ts        # Coordinates VAD + STT
-    vad.ts                  # Voice Activity Detection (@ricky0123/vad-web)
+    vad.ts                  # @ricky0123/vad-web
     stt-provider.ts         # STT interface
-    web-speech-stt.ts       # Web Speech API implementation
+    web-speech-stt.ts       # Web Speech API
 
   comm/
-    protocol.ts             # Aelora backend protocol (WebSocket + presence)
-    websocket-client.ts     # Reconnecting WebSocket wrapper
-    message-codec.ts        # JSON message encoding/decoding
+    protocol.ts             # Aelora WebSocket protocol + presence
+    websocket-client.ts     # Reconnecting WebSocket
+    message-codec.ts        # JSON message codec
 
   api/
-    aelora-client.ts        # Aelora REST API client (users, sessions, memory, notes, mood)
+    aelora-client.ts        # REST client (users, sessions, memory, notes, mood)
 
   tracking/
-    webcam.ts               # Camera stream management
-    face-tracker.ts         # MediaPipe face landmark detection
-    presence-manager.ts     # User presence detection (present/away/gone)
+    webcam.ts               # Camera stream
+    face-tracker.ts         # MediaPipe face landmarks
+    presence-manager.ts     # Presence detection
 
   ui/
-    hud.ts                  # HUD overlay + input panel + media toggles
-    hud.css                 # HUD styles
+    hud.ts                  # Overlay + input panel + toggles
+    hud.css                 # Styles
 
   types/
-    config.ts               # App configuration + defaults
+    config.ts               # Config + defaults
     events.ts               # EventBus type map
-    messages.ts             # WebSocket protocol message types
+    messages.ts             # WebSocket message types
 ```
 
-## State machine
+</details>
+
+<details>
+<summary>State machine</summary>
 
 ```
 idle --> listening --> thinking --> speaking --> idle
                                       |
-                         (idle --> speaking)  // handles audio race condition
+                         (idle --> speaking)  // audio race condition
 ```
 
-- **idle** — Calm floating, gentle bob and wing shimmer
-- **listening** — Forward lean, wings angled in, mouth slightly open
-- **thinking** — Stays visually calm (same as idle) while waiting for audio
-- **speaking** — Audio-reactive: mouth tracks amplitude, wings flutter with voice intensity, antenna tips glow brighter with louder audio, core pulses
+- **idle** : gentle bob, wing shimmer
+- **listening** : forward lean, wings angled in
+- **thinking** : visually calm, same as idle
+- **speaking** : audio-reactive mouth, wings, core glow, antenna tips
 
-## Presence states
+</details>
+
+<details>
+<summary>Presence</summary>
 
 ```
 present --> away (15s no face) --> gone (2min no face)
     ^_________________________________|  (face detected)
 ```
 
-- **present** — Full animation and glow
-- **away** — Dimmed to 40%, subtle idle only
-- **gone** — Dimmed to 10%, eyes closed
+- **present** : full animation
+- **away** : dimmed to 40%
+- **gone** : dimmed to 10%, eyes closed
 
-Camera toggle off pauses detection (doesn't trigger away/gone).
+Camera off pauses detection without triggering away/gone.
 
-## Audio pipeline
+</details>
+
+<details>
+<summary>Audio pipeline</summary>
 
 ```
-ElevenLabs WS --> base64 decode --> PCM16->Float32 --> AudioWorklet --> AnalyserNode --> speakers
-                                                                            |
-                                                              getAmplitude() per frame
-                                                                            |
-                                                              avatar mouth, wings, glow
+ElevenLabs WS > base64 > PCM16>Float32 > AudioWorklet > AnalyserNode > speakers
+                                                              |
+                                                    getAmplitude() per frame
+                                                              |
+                                                    avatar mouth, wings, glow
 ```
 
-The AnalyserNode (smoothingTimeConstant=0.75) provides per-frame waveform data synced with audio output. Amplitude smoothing uses frame-rate independent exponential lerp with asymmetric attack/release.
+AnalyserNode smoothingTimeConstant=0.75. Frame-rate independent exponential lerp with asymmetric attack/release.
 
-## Tech stack
+</details>
 
-- **Three.js** — 3D rendering (MeshPhysicalMaterial, ShaderMaterial, ExtrudeGeometry)
-- **Web Audio API** — AudioWorklet for low-latency TTS playback, AnalyserNode for amplitude
-- **MediaPipe** — Face landmark detection for gaze tracking
-- **VAD** — @ricky0123/vad-web for voice activity detection
-- **Web Speech API** — Browser-native speech-to-text
-- **ElevenLabs** — Streaming text-to-speech via WebSocket
-- **Aelora** — AI backend (WebSocket chat + REST API for memory/users/sessions)
-- **Vite** — Dev server and bundler
-- **TypeScript** — Full type safety throughout
+<details>
+<summary>Tech stack</summary>
 
-## Setup
+- Three.js
+- Web Audio API (AudioWorklet + AnalyserNode)
+- MediaPipe
+- @ricky0123/vad-web
+- Web Speech API
+- ElevenLabs streaming TTS
+- Aelora (WebSocket chat + REST memory API)
+- Vite + TypeScript
+
+</details>
+
+<details>
+<summary>Setup</summary>
 
 ```bash
 npm install
@@ -124,26 +142,30 @@ npm install
 Create `.env`:
 
 ```
-VITE_ELEVENLABS_API_KEY=your-elevenlabs-api-key
+VITE_ELEVENLABS_API_KEY=your-key
 VITE_ELEVENLABS_VOICE_ID=your-voice-id
 
-# Aelora backend identity
-VITE_AELORA_API_KEY=your-api-key
+VITE_AELORA_API_KEY=your-key
 VITE_USER_ID=your-user-id
 VITE_USERNAME=YourName
 VITE_SESSION_ID=patyna-web
 ```
 
 ```bash
-npm run dev      # Start dev server (port 3000)
-npm run build    # Production build
-npm run preview  # Preview production build (port 4173)
+npm run dev      # port 3000
+npm run build    # production
+npm run preview  # port 4173
 ```
 
-Open in browser, click "Click to begin", grant mic + camera permissions.
+Click "Click to begin", grant mic + camera.
 
-## HUD controls
+</details>
 
-- **🎤** — Toggle microphone (VAD + STT)
-- **📷** — Toggle camera (face tracking + presence)
-- **🔊** — Toggle ElevenLabs TTS (mute saves credits, text responses still show)
+<details>
+<summary>HUD controls</summary>
+
+- 🎤 toggle mic (VAD + STT)
+- 📷 toggle camera (face tracking + presence)
+- 🔊 toggle TTS (mute saves ElevenLabs credits)
+
+</details>
