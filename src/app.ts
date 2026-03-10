@@ -17,6 +17,7 @@ import { AeloraClient } from '@/api/aelora-client.ts';
 import { HUD } from '@/ui/hud.ts';
 import { Sidebar } from '@/ui/sidebar.ts';
 import { DEFAULT_CONFIG, type PatynaConfig } from '@/types/config.ts';
+import type { MoodData } from '@/types/messages.ts';
 
 export class App {
   private sceneManager: SceneManager;
@@ -338,7 +339,7 @@ export class App {
     this.ttsStreamOpen = false;
   }
 
-  /** Fetch user profile and session data from Aelora REST API (non-blocking). */
+  /** Fetch user profile, session data, and current mood from Aelora REST API (non-blocking). */
   private async fetchInitialMemory(): Promise<void> {
     const { userId, sessionId } = this.config.websocket;
 
@@ -360,6 +361,16 @@ export class App {
         if (session) {
           console.log(`[Patyna] Session data loaded: ${session.channelId}`);
           eventBus.emit('api:sessionDetail', { session });
+        }
+      }),
+    );
+
+    // Fetch current mood so avatar/environment start in the right state
+    promises.push(
+      this.aeloraClient.getMood().then((mood) => {
+        if (mood) {
+          console.log(`[Patyna] Initial mood: ${mood.active ? `${mood.label} (${mood.emotion}/${mood.intensity})` : 'inactive'}`);
+          eventBus.emit('comm:mood', mood as MoodData);
         }
       }),
     );
