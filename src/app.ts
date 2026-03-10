@@ -357,10 +357,11 @@ export class App {
 
   /** Fetch dashboard data (calendar, tasks, linear) from Aelora REST API. */
   private async fetchDashboardData(): Promise<void> {
+    const user = this.aeloraClient.userId;
     const [events, todos, issues] = await Promise.allSettled([
       this.aeloraClient.getCalendarEvents(7),
-      this.aeloraClient.getTodos(),
-      this.aeloraClient.getLinearIssues(),
+      this.aeloraClient.getTodos(undefined, user),
+      this.aeloraClient.getLinearIssues(undefined, user),
     ]);
 
     const calEvents = (events.status === 'fulfilled' && events.value) ? events.value : [];

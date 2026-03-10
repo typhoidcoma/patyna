@@ -213,15 +213,21 @@ export class AeloraClient {
   }
 
   /** Get todos (Google Tasks, unwraps {todos: [...]}) */
-  async getTodos(status?: string): Promise<TodoItem[] | null> {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+  async getTodos(status?: string, assignee?: string): Promise<TodoItem[] | null> {
+    const params: string[] = [];
+    if (status) params.push(`status=${encodeURIComponent(status)}`);
+    if (assignee) params.push(`assignee=${encodeURIComponent(assignee)}`);
+    const qs = params.length ? `?${params.join('&')}` : '';
     const resp = await this.get<TodoResponse>(`/api/todos${qs}`);
     return resp?.todos ?? null;
   }
 
-  /** Get all Linear issues (bare array response). */
-  async getLinearIssues(status?: string): Promise<LinearIssue[] | null> {
-    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+  /** Get Linear issues, optionally filtered by assignee. */
+  async getLinearIssues(status?: string, assignee?: string): Promise<LinearIssue[] | null> {
+    const params: string[] = [];
+    if (status) params.push(`status=${encodeURIComponent(status)}`);
+    if (assignee) params.push(`assignee=${encodeURIComponent(assignee)}`);
+    const qs = params.length ? `?${params.join('&')}` : '';
     return this.get<LinearIssue[]>(`/api/linear/issues${qs}`);
   }
 
