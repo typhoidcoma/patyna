@@ -348,7 +348,7 @@ export class MoodAnimState {
   private fromProfile: MoodAnimProfile = { ...NEUTRAL_PROFILE };
   private toProfile: MoodAnimProfile = { ...NEUTRAL_PROFILE };
   private blend = 1.0;
-  private readonly transitionSpeed = 1.5; // ~95% in 2s
+  private readonly transitionSpeed = 3.5; // ~95% in ~0.85s
 
   /** Current resolved profile — cached each frame. */
   private current: MoodAnimProfile = { ...NEUTRAL_PROFILE };

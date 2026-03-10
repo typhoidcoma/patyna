@@ -185,11 +185,11 @@ export function updateEnvironment(mesh: THREE.Mesh, elapsed: number, delta: numb
   const mat = mesh.material as THREE.ShaderMaterial;
   mat.uniforms.uTime.value = elapsed;
 
-  // Sparkles: faster lerp (~0.4 s to settle)
-  currentSparkleColor.lerp(targetSparkleColor, Math.min(1, delta * 2.5));
+  // Sparkles: fast lerp (~0.2 s to settle)
+  currentSparkleColor.lerp(targetSparkleColor, Math.min(1, delta * 5.0));
   mat.uniforms.uSparkleColor.value.copy(currentSparkleColor);
 
-  // Contour lines: slightly slower lerp (~0.55 s) for organic feel
-  currentContourColor.lerp(targetContourColor, Math.min(1, delta * 1.8));
+  // Contour lines: slightly slower lerp (~0.25 s) for organic feel
+  currentContourColor.lerp(targetContourColor, Math.min(1, delta * 4.0));
   mat.uniforms.uContourColor.value.copy(currentContourColor);
 }

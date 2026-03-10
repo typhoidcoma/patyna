@@ -145,7 +145,8 @@ export class Avatar {
     });
 
     // Listen for mood changes → tint wings + drive animation profile
-    eventBus.on('comm:mood', ({ emotion, intensity, active }) => {
+    eventBus.on('comm:mood', ({ emotion, intensity, active, label }) => {
+      console.log(`[Avatar] Mood received @ ${performance.now().toFixed(0)}ms — ${active ? `${label} (${emotion}/${intensity})` : 'inactive'}`);
       if (!active) {
         this.wingTargetColor.copy(this.wingDefaultColor);
         this.moodAnimState.clearMood();
@@ -578,7 +579,7 @@ export class Avatar {
     this.wingMat.opacity = 0.42 + shimmer * 0.14;
 
     // Smooth-lerp wing color toward mood target
-    this.wingCurrentColor.lerp(this.wingTargetColor, Math.min(1, delta * 2.0));
+    this.wingCurrentColor.lerp(this.wingTargetColor, Math.min(1, delta * 5.0));
     this.wingMat.color.copy(this.wingCurrentColor);
   }
 
