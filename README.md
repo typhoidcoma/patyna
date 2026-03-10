@@ -1,4 +1,4 @@
-# Patyna
+# PATYNA
 
 Real-time AI avatar with voice interaction. Mint-teal butterfly-core entity that listens, thinks, and speaks.
 
