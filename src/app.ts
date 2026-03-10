@@ -144,7 +144,13 @@ export class App {
       if (name) {
         this.config.websocket.username = name;
         this.config.websocket.userId = name;
+
+        // Scope session to this user — keeps conversations separate per user
+        const userSessionId = `patyna-${name.toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`;
+        this.config.websocket.sessionId = userSessionId;
+
         this.aeloraClient.updateUser(name);
+        this.aeloraClient.updateSession(userSessionId);
         this.comm.updateUsername(name);
       }
       this.onReady();

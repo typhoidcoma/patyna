@@ -124,16 +124,17 @@ export interface AeloraClientConfig {
 export class AeloraClient {
   private baseUrl: string;
   private headers: Record<string, string>;
-  readonly sessionId: string;
+  private _sessionId: string;
   private _userId?: string;
   private _username?: string;
 
+  get sessionId(): string { return this._sessionId; }
   get userId(): string | undefined { return this._userId; }
   get username(): string | undefined { return this._username; }
 
   constructor(config: AeloraClientConfig) {
     this.baseUrl = config.baseUrl ?? this.deriveBaseUrl(config.wsUrl);
-    this.sessionId = config.sessionId;
+    this._sessionId = config.sessionId;
     this._userId = config.userId;
     this._username = config.username;
 
@@ -149,6 +150,11 @@ export class AeloraClient {
   updateUser(username: string): void {
     this._userId = username;
     this._username = username;
+  }
+
+  /** Update session ID (called after login to scope session to the user). */
+  updateSession(sessionId: string): void {
+    this._sessionId = sessionId;
   }
 
   // ── Public API ──
