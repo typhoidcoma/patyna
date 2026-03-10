@@ -2,12 +2,13 @@
    Scene wrapper — flex:1 area for 3D canvas
    ════════════════════════════════════════════ */
 .scene-wrap {
-  flex: 1;
+  flex: 2;
   position: relative;
   overflow: hidden;
   min-height: 0;
-  border-radius: var(--radius-lg);
-  margin: var(--space-md);
+  border-radius: var(--scene-radius);
+  margin: var(--scene-margin);
+  margin-bottom: 0; /* bleed into panel for immersive feel */
   background: #1a2a2e; /* match scene top gradient — prevents white flash */
 }
 
@@ -26,7 +27,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--space-lg);
+  padding: var(--hud-top-padding);
+  flex-wrap: wrap;
+  gap: var(--space-xs);
 }
 
 .hud-wordmark {
@@ -104,7 +107,7 @@
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* Media toggle buttons */
+/* Media toggle buttons — 44px touch targets on mobile */
 .hud-toggle-btn {
   font-size: 14px;
   margin-left: var(--space-xs);
@@ -119,6 +122,18 @@
   pointer-events: all;
   position: relative;
   line-height: 1;
+  min-width: var(--touch-min);
+  min-height: var(--touch-min);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+@media (min-width: 768px) {
+  .hud-toggle-btn {
+    min-width: auto;
+    min-height: auto;
+  }
 }
 
 .hud-toggle-btn:hover {
@@ -330,25 +345,42 @@
    Panel — real DOM below the 3D scene
    ════════════════════════════════════════════ */
 .hud-panel {
-  flex-shrink: 0;
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: var(--space-sm);
-  padding: var(--space-md) var(--space-lg) var(--space-lg);
+  gap: var(--space-xs);
+  padding: var(--panel-padding-y) var(--panel-padding-x);
 }
 
-/* User speech text (brief, fades) — fixed height to avoid scene reflow */
+@media (min-width: 768px) {
+  .hud-panel {
+    gap: var(--space-sm);
+    padding: var(--space-md) var(--space-lg) var(--space-lg);
+  }
+}
+
+/* User speech text — shows what the user said/typed */
 .hud-user-text {
+  flex-shrink: 0;
   font-size: 12px;
   color: var(--text-secondary);
   opacity: 0;
-  max-width: 500px;
+  max-width: var(--input-max-width);
+  width: 100%;
   text-align: center;
-  line-height: 1.4;
+  line-height: 1.5;
   transition: opacity var(--duration-normal) var(--ease-smooth);
-  height: 1.2em;
-  overflow: hidden;
+  min-height: 1.5em;
+  padding: 0 var(--space-sm);
+}
+
+@media (min-width: 768px) {
+  .hud-user-text {
+    font-size: 13px;
+    padding: 0;
+  }
 }
 
 .hud-user-text.visible {
@@ -357,11 +389,20 @@
 
 /* Text input — glass pill style */
 .hud-input-row {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
-  gap: var(--space-sm);
+  gap: var(--space-xs);
   width: 100%;
-  max-width: 480px;
+  max-width: var(--input-max-width);
+  padding: 0 var(--space-xs);
+}
+
+@media (min-width: 480px) {
+  .hud-input-row {
+    gap: var(--space-sm);
+    padding: 0;
+  }
 }
 
 .hud-input {
@@ -371,13 +412,20 @@
   -webkit-backdrop-filter: blur(18px);
   border: 1px solid var(--border-soft);
   border-radius: var(--radius-pill);
-  padding: 12px 20px;
+  padding: 12px 16px;
   font-family: var(--font-family);
-  font-size: 14px;
+  font-size: 16px; /* 16px prevents iOS Safari auto-zoom on focus */
   color: var(--text-primary);
   outline: none;
   box-shadow: var(--shadow-soft);
   transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+@media (min-width: 768px) {
+  .hud-input {
+    padding: 12px 20px;
+    font-size: 14px;
+  }
 }
 
 .hud-input::placeholder {
@@ -392,8 +440,8 @@
 
 .hud-send {
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: var(--touch-min);
+  height: var(--touch-min);
   border-radius: var(--radius-pill);
   border: none;
   background: linear-gradient(180deg, var(--accent-primary) 0%, var(--accent-primary-hover) 100%);
@@ -407,6 +455,13 @@
   box-shadow: var(--shadow-glow-pink);
 }
 
+@media (min-width: 768px) {
+  .hud-send {
+    width: 40px;
+    height: 40px;
+  }
+}
+
 .hud-send:hover {
   background: linear-gradient(180deg, #ff6198 0%, var(--color-rose-pink) 100%);
 }
@@ -417,13 +472,33 @@
   box-shadow: none;
 }
 
-/* AI response area — fixed height container */
+/* AI response area — fills remaining panel space */
 .hud-response-area {
+  flex: 1;
+  min-height: 0;
   display: flex;
   justify-content: center;
+  align-items: flex-start;
   width: 100%;
-  height: 3.2em;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: var(--space-xs) var(--space-sm);
+  mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black 85%, transparent 100%);
+}
+
+/* Subtle scrollbar for response area */
+.hud-response-area::-webkit-scrollbar {
+  width: 3px;
+}
+
+.hud-response-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.hud-response-area::-webkit-scrollbar-thumb {
+  background: rgba(118, 116, 127, 0.12);
+  border-radius: 2px;
 }
 
 .hud-response {
@@ -431,11 +506,17 @@
   color: var(--text-secondary);
   opacity: 0;
   text-align: center;
-  line-height: 1.4;
-  max-width: 480px;
-  overflow: hidden;
+  line-height: 1.6;
+  max-width: var(--input-max-width);
   user-select: text;
   transition: opacity var(--duration-normal) var(--ease-smooth);
+}
+
+@media (min-width: 768px) {
+  .hud-response {
+    font-size: 13px;
+    line-height: 1.65;
+  }
 }
 
 .hud-response-area.visible .hud-response {

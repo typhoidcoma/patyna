@@ -10,6 +10,7 @@ import './sidebar.css';
  */
 export class Sidebar {
   private el: HTMLDivElement;
+  private scrim: HTMLDivElement;
   private calendarWidget: WidgetSection;
   private tasksWidget: WidgetSection;
   private linearWidget: WidgetSection;
@@ -18,6 +19,15 @@ export class Sidebar {
   constructor(container: HTMLElement) {
     this.el = document.createElement('div');
     this.el.className = 'sidebar';
+
+    // Scrim — translucent backdrop for mobile overlay; tap to dismiss
+    this.scrim = document.createElement('div');
+    this.scrim.className = 'sidebar-scrim';
+    this.scrim.addEventListener('click', () => {
+      this.hide();
+      eventBus.emit('sidebar:closed');
+    });
+    container.appendChild(this.scrim);
 
     this.calendarWidget = new WidgetSection('Calendar');
     this.tasksWidget = new WidgetSection('Tasks');
@@ -131,25 +141,38 @@ export class Sidebar {
 
   toggle(): void {
     this.visible = !this.visible;
-    this.el.classList.toggle('collapsed', !this.visible);
 
-    // On narrow screens, use force-show overlay
-    if (window.innerWidth <= 900) {
+    if (window.innerWidth < 1024) {
+      // Mobile / tablet: slide overlay + scrim
       this.el.classList.toggle('force-show', this.visible);
+      this.scrim.classList.toggle('visible', this.visible);
+    } else {
+      // Desktop: inline collapse
+      this.el.classList.toggle('collapsed', !this.visible);
     }
   }
 
   show(): void {
     this.visible = true;
-    this.el.classList.remove('collapsed');
+    if (window.innerWidth < 1024) {
+      this.el.classList.add('force-show');
+      this.scrim.classList.add('visible');
+    } else {
+      this.el.classList.remove('collapsed');
+    }
   }
 
   hide(): void {
     this.visible = false;
-    this.el.classList.add('collapsed');
+    this.el.classList.remove('force-show');
+    this.scrim.classList.remove('visible');
+    if (window.innerWidth >= 1024) {
+      this.el.classList.add('collapsed');
+    }
   }
 
   destroy(): void {
+    this.scrim.remove();
     this.el.remove();
   }
 }

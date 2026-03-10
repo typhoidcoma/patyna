@@ -277,6 +277,11 @@ export class HUD {
       this.setMood(mood);
     });
 
+    // Sidebar closed (from scrim tap on mobile)
+    eventBus.on('sidebar:closed', () => {
+      this.dashBtn.dataset.active = 'off';
+    });
+
     // Errors
     eventBus.on('comm:error', ({ message }) => {
       this.showToast(message);

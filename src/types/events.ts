@@ -58,4 +58,5 @@ export interface EventMap {
 
   // Sidebar
   'sidebar:toggle': void;
+  'sidebar:closed': void;
 }

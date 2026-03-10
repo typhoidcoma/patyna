@@ -78,4 +78,40 @@
   --space-md: 20px;
   --space-lg: 28px;
   --space-xl: 48px;
+
+  /* ── Responsive layout (mobile-first defaults) ── */
+  --scene-margin: var(--space-xs);
+  --scene-radius: var(--radius-md);
+  --panel-padding-x: var(--space-sm);
+  --panel-padding-y: var(--space-sm);
+  --input-max-width: 100%;
+  --hud-top-padding: var(--space-sm);
+  --app-max-width: none;
+  --touch-min: 44px;
+}
+
+/* ── Responsive overrides ── */
+
+@media (min-width: 480px) {
+  :root {
+    --scene-margin: var(--space-sm);
+    --scene-radius: var(--radius-lg);
+    --input-max-width: 480px;
+  }
+}
+
+@media (min-width: 768px) {
+  :root {
+    --scene-margin: var(--space-md);
+    --panel-padding-x: var(--space-lg);
+    --panel-padding-y: var(--space-md);
+    --hud-top-padding: var(--space-lg);
+  }
+}
+
+@media (min-width: 1440px) {
+  :root {
+    --app-max-width: 1600px;
+    --scene-margin: var(--space-lg);
+  }
 }

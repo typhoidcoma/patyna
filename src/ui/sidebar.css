@@ -43,14 +43,20 @@
   background: rgba(118, 116, 127, 0.25);
 }
 
-/* ── Widget card ── */
+/* ── Widget card — frosted glass tile ── */
 .sidebar-widget {
-  padding: var(--space-lg) var(--space-lg);
-  border-bottom: 1px solid var(--border-muted);
+  margin: 0 var(--space-sm) var(--space-sm);
+  padding: var(--space-md) var(--space-md);
+  background: var(--glass-bg-strong);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-soft);
 }
 
 .sidebar-widget:last-child {
-  border-bottom: none;
+  margin-bottom: var(--space-sm);
 }
 
 .sidebar-widget-header {
@@ -59,7 +65,7 @@
   justify-content: space-between;
   margin-bottom: 10px;
   padding-bottom: 6px;
-  border-bottom: 1px solid rgba(118, 116, 127, 0.08);
+  border-bottom: 1px solid rgba(118, 116, 127, 0.10);
 }
 
 .sidebar-widget-title {
@@ -84,7 +90,7 @@
   align-items: flex-start;
   gap: 12px;
   padding: 8px 10px;
-  margin: 2px -10px;
+  margin: 2px -6px;
   border-radius: var(--radius-small);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-smooth);
@@ -248,24 +254,60 @@
   50%      { opacity: 1; }
 }
 
-/* ── Responsive ── */
-@media (max-width: 900px) {
-  .sidebar {
-    width: 0;
-    opacity: 0;
-    border-left: none;
-    pointer-events: none;
-  }
+/* ── Sidebar scrim — translucent backdrop for mobile overlay ── */
+.sidebar-scrim {
+  display: none;
+  position: absolute;
+  inset: 0;
+  z-index: 14;
+  background: rgba(28, 29, 33, 0.4);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  opacity: 0;
+  pointer-events: none;
+  cursor: pointer;
+  transition: opacity var(--duration-normal) var(--ease-smooth);
+}
 
-  .sidebar.force-show {
-    width: 320px;
-    opacity: 1;
-    border-left: 1px solid var(--border-soft);
-    pointer-events: all;
+.sidebar-scrim.visible {
+  opacity: 1;
+  pointer-events: all;
+}
+
+/* ── Responsive ── */
+
+/* Below 1024px: sidebar becomes overlay with transform slide */
+@media (max-width: 1023px) {
+  .sidebar {
     position: absolute;
     right: 0;
     top: 0;
     bottom: 0;
     z-index: 15;
+    width: min(320px, 85vw);
+    transform: translateX(100%);
+    opacity: 1;
+    pointer-events: none;
+    transition: transform var(--duration-normal) var(--ease-smooth),
+                box-shadow var(--duration-normal) var(--ease-smooth);
+    will-change: transform;
+  }
+
+  /* Desktop collapsed class shouldn't interfere on mobile */
+  .sidebar.collapsed {
+    width: min(320px, 85vw);
+    opacity: 1;
+    border-left: 1px solid var(--border-soft);
+    transform: translateX(100%);
+  }
+
+  .sidebar.force-show {
+    transform: translateX(0);
+    pointer-events: all;
+    box-shadow: -8px 0 30px rgba(28, 29, 33, 0.15);
+  }
+
+  .sidebar-scrim {
+    display: block;
   }
 }
