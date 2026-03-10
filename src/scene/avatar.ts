@@ -78,6 +78,12 @@ export class Avatar {
   // Mood animation — smooth profile transitions
   private moodAnimState = new MoodAnimState();
 
+  // Eye highlight meshes (for gaze + dilation animation)
+  private leftHighlights: THREE.Mesh[] = [];
+  private rightHighlights: THREE.Mesh[] = [];
+  private highlightBasePositions: THREE.Vector3[] = []; // L1, L2, R1, R2
+  private highlightBaseScales: number[] = [];           // base uniform scale per highlight
+
   // Stored base positions for reset each frame
   private eyeBaseY = 0;
 
@@ -300,6 +306,7 @@ export class Avatar {
 
     for (const side of [-1, 1]) {
       const eyeGroup = side === -1 ? this.leftEyeGroup : this.rightEyeGroup;
+      const highlights = side === -1 ? this.leftHighlights : this.rightHighlights;
       eyeGroup.position.set(side * eyeOffsetX, eyeY, eyeZ);
 
       // Large dark oval eye
@@ -314,11 +321,17 @@ export class Avatar {
       const hl1 = new THREE.Mesh(new THREE.SphereGeometry(0.028, 10, 8), hlMat);
       hl1.position.set(side * 0.018, 0.032, 0.042);
       eyeGroup.add(hl1);
+      highlights.push(hl1);
+      this.highlightBasePositions.push(hl1.position.clone());
+      this.highlightBaseScales.push(1.0);
 
       // Secondary smaller sparkle
       const hl2 = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 6), hlMat);
       hl2.position.set(side * -0.014, -0.018, 0.042);
       eyeGroup.add(hl2);
+      highlights.push(hl2);
+      this.highlightBasePositions.push(hl2.position.clone());
+      this.highlightBaseScales.push(1.0);
     }
   }
 
@@ -499,6 +512,9 @@ export class Avatar {
     // ── Blink / eyes closing when gone — scaled by mood ──
     this.updateBlink(elapsed, pB, mood);
 
+    // ── Eye expression: gaze, saccades, dilation — scaled by mood ──
+    this.updateEyes(elapsed, pB, mood);
+
     // ── Antenna sway — scaled by presence + mood ──
     this.updateAntennae(elapsed, pB, mood);
 
@@ -611,6 +627,52 @@ export class Avatar {
     this.rightEyeGroup.scale.y = eyeScaleY;
   }
 
+  /**
+   * Expressive eyes — micro-saccades, mood gaze, highlight dilation.
+   * Called each frame after updateBlink() so Y-scale is already set.
+   */
+  private updateEyes(elapsed: number, pB: number = 1, mood: MoodAnimProfile = NEUTRAL_PROFILE): void {
+    // ── Eye X-scale (horizontal squint / widen) ──
+    this.leftEyeGroup.scale.x = mood.eyeScaleXMult;
+    this.rightEyeGroup.scale.x = mood.eyeScaleXMult;
+
+    // ── Micro-saccades: layered sin waves at irrational frequencies ──
+    // Creates organic, non-repeating drift that feels alive
+    const saccBaseAmp = 0.003 * mood.saccadeAmplitude * pB;
+    const saccSpd = mood.saccadeSpeed;
+    const saccX = Math.sin(elapsed * 1.41421 * saccSpd) * 0.7
+                + Math.sin(elapsed * 2.23607 * saccSpd + 1.7) * 0.3;
+    const saccY = Math.sin(elapsed * 1.73205 * saccSpd + 0.9) * 0.6
+                + Math.sin(elapsed * 3.14159 * saccSpd + 2.3) * 0.4;
+
+    // ── Highlight size pulse (subtle breathing + mood dilation) ──
+    const breathe = 1.0 + Math.sin(elapsed * 1.7) * 0.06;
+    const hlScale = breathe * mood.highlightSizeMult;
+
+    // ── Apply to all 4 highlights (L1, L2, R1, R2) ──
+    const allHighlights = [this.leftHighlights, this.rightHighlights];
+    let idx = 0;
+    for (let s = 0; s < 2; s++) {
+      const side = s === 0 ? -1 : 1;
+      const highlights = allHighlights[s];
+      for (let h = 0; h < highlights.length; h++) {
+        const hl = highlights[h];
+        const base = this.highlightBasePositions[idx];
+        const baseScale = this.highlightBaseScales[idx];
+
+        // Gaze offset: X flipped per side so both eyes look the same direction
+        hl.position.x = base.x + saccX * saccBaseAmp + mood.gazeOffsetX * side * pB;
+        hl.position.y = base.y + saccY * saccBaseAmp + mood.gazeOffsetY * pB;
+
+        // Highlight scale (uniform)
+        const s3 = baseScale * hlScale;
+        hl.scale.set(s3, s3, s3);
+
+        idx++;
+      }
+    }
+  }
+
   /** Gentle antenna sway + tip glow pulse — modulated by mood */
   private updateAntennae(elapsed: number, pB: number = 1, mood: MoodAnimProfile = NEUTRAL_PROFILE): void {
     const aSpd = mood.antennaSpeedMult;
@@ -639,13 +701,13 @@ export class Avatar {
     this.mouth.scale.y = 1.0 + 0.3 * this.stateBlend;
   }
 
-  /** Thinking — stay calm, just subtle eye glance upward.
-   *  No bouncing or head tilting — avatar waits quietly for audio. */
+  /** Thinking — subtle upward gaze via highlight shift (not whole eye group). */
   private updateThinking(_elapsed: number): void {
-    // Very subtle eyes-up hint (barely noticeable)
-    const eyeShift = 0.005 * this.stateBlend;
-    this.leftEyeGroup.position.y += eyeShift;
-    this.rightEyeGroup.position.y += eyeShift;
+    // Nudge highlights upward — a "glancing up while thinking" gesture
+    const gazeUp = 0.004 * this.stateBlend;
+    for (const hl of [...this.leftHighlights, ...this.rightHighlights]) {
+      hl.position.y += gazeUp;
+    }
   }
 
   /** Speaking — voice-reactive animation: mouth, core, body, wings, antennae */
@@ -689,5 +751,13 @@ export class Avatar {
       1.0,                    // G: always full
       0.957 + amp * 0.043,   // B: push toward white at loud
     );
+
+    // ── Eye highlights "light up" with voice — sparkles grow with amplitude ──
+    const hlBoost = 1.0 + amp * 0.4 * blend;
+    for (const hl of [...this.leftHighlights, ...this.rightHighlights]) {
+      hl.scale.x *= hlBoost;
+      hl.scale.y *= hlBoost;
+      hl.scale.z *= hlBoost;
+    }
   }
 }
