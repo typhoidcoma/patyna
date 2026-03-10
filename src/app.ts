@@ -130,8 +130,18 @@ export class App {
     // Wire events
     this.setupListeners();
 
-    // Wait for user interaction to unlock audio/permissions
-    this.hud.ready.then(() => this.onReady());
+    // Wait for user login to unlock audio/permissions
+    this.hud.ready.then(() => {
+      // Patch config with the name entered on the login screen
+      const name = this.hud.enteredUsername;
+      if (name) {
+        this.config.websocket.username = name;
+        this.config.websocket.userId = name;
+        this.aeloraClient.updateUser(name);
+        this.comm.updateUsername(name);
+      }
+      this.onReady();
+    });
   }
 
   private setupListeners(): void {

@@ -72,6 +72,12 @@ export class CommManager {
     this.sendRaw({ type: 'presence', status });
   }
 
+  /** Update user identity (called after login, before connect). */
+  updateUsername(username: string): void {
+    this.config.websocket.username = username;
+    this.config.websocket.userId = username;
+  }
+
   /** Send any client message. */
   private sendRaw(msg: ClientMessage): void {
     this.client.sendText(encodeMessage(msg));

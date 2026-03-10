@@ -36,7 +36,10 @@ export class HUD {
   private toastTimer = 0;
   private userTextTimer = 0;
 
-  /** Resolves when the user clicks "begin" */
+  /** Username entered on the login screen */
+  enteredUsername = '';
+
+  /** Resolves when the user submits the login form */
   readonly ready: Promise<void>;
 
   /**
@@ -117,16 +120,33 @@ export class HUD {
     this.toast = document.createElement('div');
     this.toast.className = 'hud-toast';
 
-    // ── Start overlay ──
+    // ── Start overlay (login form) ──
     this.startOverlay = document.createElement('div');
     this.startOverlay.className = 'hud-start';
 
     const startInner = document.createElement('div');
     startInner.className = 'hud-start-inner';
 
-    const startText = document.createElement('span');
-    startText.className = 'hud-start-text';
-    startText.textContent = 'Click to begin';
+    const loginForm = document.createElement('div');
+    loginForm.className = 'hud-login-form';
+
+    const heading = document.createElement('div');
+    heading.className = 'hud-login-heading';
+    heading.textContent = 'Hi!';
+
+    const loginInput = document.createElement('input');
+    loginInput.className = 'hud-login-input';
+    loginInput.type = 'text';
+    loginInput.placeholder = 'Your name\u2026';
+    loginInput.autocomplete = 'name';
+    loginInput.maxLength = 40;
+    loginInput.value = localStorage.getItem('patyna:username') ?? '';
+
+    const loginBtn = document.createElement('button');
+    loginBtn.className = 'hud-login-btn';
+    loginBtn.textContent = 'Begin';
+
+    loginForm.append(heading, loginInput, loginBtn);
 
     // Progress bar (hidden until loading starts)
     const progressWrap = document.createElement('div');
@@ -137,7 +157,7 @@ export class HUD {
     this.progressLabel.className = 'hud-progress-label';
     progressWrap.appendChild(this.progressBar);
 
-    startInner.append(startText, progressWrap, this.progressLabel);
+    startInner.append(loginForm, progressWrap, this.progressLabel);
     this.startOverlay.appendChild(startInner);
 
     this.overlay.append(top, this.toast, this.startOverlay);
@@ -181,14 +201,29 @@ export class HUD {
     this.panel.append(this.userText, this.inputRow, this.responseArea);
     container.appendChild(this.panel);
 
-    // ── Ready promise ──
+    // ── Ready promise (login gate) ──
     this.ready = new Promise((resolve) => {
-      this.startOverlay.addEventListener('click', () => {
+      const submit = () => {
+        const name = loginInput.value.trim();
+        if (!name) {
+          loginInput.focus();
+          return;
+        }
+        this.enteredUsername = name;
+        localStorage.setItem('patyna:username', name);
         this.startOverlay.classList.add('loading');
-        startText.style.display = 'none';
+        loginForm.style.display = 'none';
         resolve();
-      }, { once: true });
+      };
+
+      loginBtn.addEventListener('click', submit);
+      loginInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') submit();
+      });
     });
+
+    // Auto-focus the login input after a brief delay (allows overlay transition)
+    setTimeout(() => loginInput.focus(), 300);
 
     // Update progress bar during initialization
     eventBus.on('init:progress', ({ pct, label }) => {

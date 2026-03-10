@@ -125,14 +125,17 @@ export class AeloraClient {
   private baseUrl: string;
   private headers: Record<string, string>;
   readonly sessionId: string;
-  readonly userId?: string;
-  readonly username?: string;
+  private _userId?: string;
+  private _username?: string;
+
+  get userId(): string | undefined { return this._userId; }
+  get username(): string | undefined { return this._username; }
 
   constructor(config: AeloraClientConfig) {
     this.baseUrl = config.baseUrl ?? this.deriveBaseUrl(config.wsUrl);
     this.sessionId = config.sessionId;
-    this.userId = config.userId;
-    this.username = config.username;
+    this._userId = config.userId;
+    this._username = config.username;
 
     this.headers = { 'Content-Type': 'application/json' };
     if (config.apiKey) {
@@ -140,6 +143,12 @@ export class AeloraClient {
     }
 
     console.log(`[AeloraClient] Base URL: ${this.baseUrl}`);
+  }
+
+  /** Update user identity (called after login, before connect). */
+  updateUser(username: string): void {
+    this._userId = username;
+    this._username = username;
   }
 
   // ── Public API ──
