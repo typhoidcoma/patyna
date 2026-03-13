@@ -9,11 +9,12 @@ Real-time AI avatar with voice interaction. Mint-teal butterfly-core entity that
 - Voice conversation via VAD + Web Speech STT + ElevenLabs TTS
 - Audio-reactive animation via Web Audio AnalyserNode
 - Face tracking via MediaPipe
-- Mood-colored environment sparkles
+- Mood-driven animation profiles with smooth state blending
 - Presence detection (present/away/gone) with avatar dimming
 - Aelora memory API integration
 - TTS toggle to mute ElevenLabs and save credits
 - Text input fallback
+- P0 demo: interactive task dashboard with LLM coaching, celebrations, and draggable widgets
 
 </details>
 
@@ -29,11 +30,17 @@ src/
     state-machine.ts        # idle > listening > thinking > speaking
     event-bus.ts            # Typed pub/sub
 
+  utils/
+    lerp.ts                 # Interpolation helpers
+    ring-buffer.ts          # Ring buffer data structure
+
   scene/
     scene-manager.ts        # Three.js renderer, camera, lights
     avatar.ts               # 3D butterfly avatar
     avatar-controller.ts    # Face-tracking gaze controller
     environment.ts          # Shader background + mood sparkles
+    mood-animations.ts      # Mood-driven animation profiles
+    mood-colors.ts          # Emotion-to-color mapping
 
   audio/
     audio-manager.ts        # AudioContext lifecycle
@@ -62,6 +69,23 @@ src/
   ui/
     hud.ts                  # Overlay + input panel + toggles
     hud.css                 # Styles
+    sidebar.ts              # Sidebar widget container
+    demo-hud.ts             # Demo HUD (login, text input, reset)
+    demo-sidebar.ts         # Goals & tasks floating widgets
+    today-card.ts           # Schedule card widget
+    speech-bubble.ts        # Floating LLM response bubble
+    draggable.ts            # Drag utility for floating widgets
+
+  fx/
+    celebration.ts          # Task completion effects (stars, flash, sparkle, chime)
+
+  demo/
+    demo-main.ts            # Demo entry point
+    demo-app.ts             # P0 demo orchestrator
+    demo-state.ts           # Demo goals/tasks/schedule state
+    demo-data.ts            # Seed data (goals, tasks, schedule)
+    demo-types.ts           # Demo data types
+    demo-overrides.css      # Demo-specific styles
 
   types/
     config.ts               # Config + defaults
@@ -107,14 +131,14 @@ Camera off pauses detection without triggering away/gone.
 <summary>Audio pipeline</summary>
 
 ```
-ElevenLabs WS > base64 > PCM16>Float32 > AudioWorklet > AnalyserNode > speakers
-                                                              |
-                                                    getAmplitude() per frame
-                                                              |
-                                                    avatar mouth, wings, glow
+ElevenLabs WS > binary Float32 PCM > AudioWorklet ring buffer > AnalyserNode > speakers
+                                              |
+                                    getAmplitude() per frame
+                                              |
+                                    avatar mouth, wings, glow
 ```
 
-AnalyserNode smoothingTimeConstant=0.75. Frame-rate independent exponential lerp with asymmetric attack/release.
+60s ring buffer with 1.5s drain grace period for chunk gaps. AnalyserNode smoothingTimeConstant=0.75. Frame-rate independent exponential lerp with asymmetric attack/release.
 
 </details>
 
@@ -152,20 +176,42 @@ VITE_SESSION_ID=patyna-web
 ```
 
 ```bash
-npm run dev      # port 3000
+npm run dev      # port 3005
 npm run build    # production
 npm run preview  # port 4173
 ```
 
-Click "Click to begin", grant mic + camera.
+**Main app:** Click "Click to begin", grant mic + camera.
+
+**Demo:** Open `localhost:3005/demo.html`, enter a username, text-only (no mic/camera needed).
+
+</details>
+
+<details>
+<summary>P0 Demo</summary>
+
+Interactive task dashboard with LLM-powered coaching.
+
+- Entry: `demo.html` loads `src/demo/demo-app.ts`
+- Login overlay with username (persisted in localStorage)
+- Dashboard widgets: today card (schedule), goals (progress bars), tasks (checkboxes + points)
+- LLM responds to task completions and free-text chat via Aelora WebSocket
+- Celebration effects on task complete: star particle burst, gold widget flash, points bar shimmer, sparkle chime, avatar joy spin, mini sparkle at checkbox
+- Widgets are draggable by their headers, auto-stack on resize
+- Each widget has a unique color tint: lavender (schedule), gold (goals), mint (tasks)
+- Response text auto-fades after 8 seconds
+- Reset button clears all tasks and conversation history
 
 </details>
 
 <details>
 <summary>HUD controls</summary>
 
+**Main app:**
 - 🎤 toggle mic (VAD + STT)
 - 📷 toggle camera (face tracking + presence)
 - 🔊 toggle TTS (mute saves ElevenLabs credits)
+
+**Demo:** Text input replaces mic/camera. TTS toggle + Reset button in nav bar.
 
 </details>
