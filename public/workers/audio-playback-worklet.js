@@ -11,8 +11,12 @@
  *   <- { type: 'state', playing: boolean }       Playback state change
  */
 
-const BUFFER_CAPACITY = 24000 * 10; // 10 seconds at 24kHz
+const BUFFER_CAPACITY = 24000 * 60; // 60 seconds at 24kHz (~5.5MB)
 const PRE_BUFFER = 24000 * 0.15;   // 150ms pre-buffer before starting playback
+// Grace period: output silence for ~1.5s before declaring playback done.
+// This absorbs gaps between ElevenLabs audio chunks during long responses.
+// ElevenLabs can pause for 500ms–1s mid-response while processing complex text.
+const DRAIN_GRACE = Math.ceil((24000 * 1.5) / 128); // ~281 frames of silence
 
 class PlaybackProcessor extends AudioWorkletProcessor {
   constructor() {
@@ -23,16 +27,20 @@ class PlaybackProcessor extends AudioWorkletProcessor {
     this._available = 0;
     this._playing = false;
     this._draining = false; // true once we've started playing (disables pre-buffer gate)
+    this._silentFrames = 0; // consecutive frames with no data (for grace period)
 
     this.port.onmessage = (ev) => {
       const msg = ev.data;
       if (msg.type === 'chunk') {
         this._writeChunk(msg.data);
+        // New data arrived — reset the silence counter
+        this._silentFrames = 0;
       } else if (msg.type === 'clear') {
         this._readPos = 0;
         this._writePos = 0;
         this._available = 0;
         this._draining = false;
+        this._silentFrames = 0;
         if (this._playing) {
           this._playing = false;
           this.port.postMessage({ type: 'state', playing: false });
@@ -50,8 +58,7 @@ class PlaybackProcessor extends AudioWorkletProcessor {
     this._available += toWrite;
 
     if (toWrite < data.length) {
-      // Buffer overflow — dropped samples
-      // This shouldn't happen with 10s buffer, but log it
+      this.port.postMessage({ type: 'overflow', dropped: data.length - toWrite });
     }
   }
 
@@ -73,6 +80,7 @@ class PlaybackProcessor extends AudioWorkletProcessor {
     if (this._available >= frameSamples) {
       // Read from ring buffer
       this._draining = true;
+      this._silentFrames = 0;
       for (let i = 0; i < frameSamples; i++) {
         channel[i] = this._buffer[this._readPos];
         this._readPos = (this._readPos + 1) % BUFFER_CAPACITY;
@@ -85,6 +93,7 @@ class PlaybackProcessor extends AudioWorkletProcessor {
       }
     } else if (this._available > 0) {
       // Partial read — play what we have, zero the rest
+      this._silentFrames = 0;
       for (let i = 0; i < this._available; i++) {
         channel[i] = this._buffer[this._readPos];
         this._readPos = (this._readPos + 1) % BUFFER_CAPACITY;
@@ -93,20 +102,23 @@ class PlaybackProcessor extends AudioWorkletProcessor {
         channel[i] = 0;
       }
       this._available = 0;
-
-      // Buffer fully drained — response is complete
-      this._playing = false;
-      this._draining = false;
-      this.port.postMessage({ type: 'state', playing: false });
+      // Don't stop yet — enter grace period waiting for more chunks
     } else {
-      // Nothing to play — output silence
+      // No data — output silence
       for (let i = 0; i < frameSamples; i++) {
         channel[i] = 0;
       }
+
+      // Grace period: only declare playback done after sustained silence.
+      // This prevents brief network gaps from cutting off long responses.
       if (this._playing) {
-        this._playing = false;
-        this._draining = false;
-        this.port.postMessage({ type: 'state', playing: false });
+        this._silentFrames++;
+        if (this._silentFrames >= DRAIN_GRACE) {
+          this._playing = false;
+          this._draining = false;
+          this._silentFrames = 0;
+          this.port.postMessage({ type: 'state', playing: false });
+        }
       }
     }
 

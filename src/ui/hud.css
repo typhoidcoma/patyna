@@ -574,7 +574,7 @@
   line-height: 1.6;
   max-width: var(--input-max-width);
   user-select: text;
-  transition: opacity var(--duration-normal) var(--ease-smooth);
+  transition: opacity 1.2s var(--ease-smooth);
 }
 
 @media (min-width: 768px) {

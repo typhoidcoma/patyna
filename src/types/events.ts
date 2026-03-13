@@ -60,4 +60,8 @@ export interface EventMap {
   // Sidebar
   'sidebar:toggle': void;
   'sidebar:stateChange': { visible: boolean };
+
+  // Demo
+  'demo:taskComplete': { taskId: string; points: number; totalPoints: number; maxPoints: number };
+  'demo:reset': void;
 }

@@ -49,6 +49,8 @@ export class TTSPlayer {
         }
       } else if (msg.type === 'starved') {
         console.warn('[TTS] Buffer starved — audio may glitch');
+      } else if (msg.type === 'overflow') {
+        console.error(`[TTS] Buffer overflow — dropped ${msg.dropped} samples!`);
       }
     };
 
