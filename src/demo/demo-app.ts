@@ -73,6 +73,15 @@ export class DemoApp {
   private finishTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingTaskMessage: string | null = null;
 
+  // Gaze source: camera is primary when on; mouse can temporarily override
+  // if moved continuously for MOUSE_TAKEOVER_MS, then reverts after MOUSE_RELEASE_MS idle.
+  private cameraActive = false;
+  private mouseOverride = false;
+  private mouseMoveStart = 0;
+  private mouseIdleTimer = 0;
+  private readonly MOUSE_TAKEOVER_MS = 400;  // sustained move before mouse takes over
+  private readonly MOUSE_RELEASE_MS = 800;   // idle before camera reclaims
+
   constructor(
     container: HTMLElement,
     config: PatynaConfig = DEFAULT_CONFIG,
@@ -334,8 +343,12 @@ export class DemoApp {
 
     eventBus.on('media:cameraToggle', ({ enabled }) => {
       if (enabled) {
+        this.cameraActive = true;
+        this.mouseOverride = false;
         this.initCamera();
       } else {
+        this.cameraActive = false;
+        this.mouseOverride = false;
         this.faceTracker.stop();
       }
     });
@@ -447,21 +460,57 @@ export class DemoApp {
   // ── Mouse → Avatar gaze tracking ──
 
   private setupMouseTracking(): void {
-    // Track across the entire viewport so the avatar follows
-    // the cursor even when it's over UI elements (sidebar, today card, etc.)
-    const onMouseMove = (e: MouseEvent) => {
+    // Mouse gaze tracking with camera-aware priority:
+    // - Camera off: mouse always controls gaze
+    // - Camera on: mouse must move continuously for MOUSE_TAKEOVER_MS
+    //   before it overrides face tracking; reverts after MOUSE_RELEASE_MS idle
+    const emitMouseGaze = (e: MouseEvent) => {
       const rect = this.sceneWrap.getBoundingClientRect();
-      // Normalize relative to scene-wrap center so the avatar
-      // looks toward the cursor wherever it is on screen
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       const x = Math.max(-1, Math.min(1, (e.clientX - cx) / (rect.width / 2)));
-      const y = -Math.max(-1, Math.min(1, (e.clientY - cy) / (rect.height / 2))); // invert Y
+      const y = -Math.max(-1, Math.min(1, (e.clientY - cy) / (rect.height / 2)));
       eventBus.emit('face:position', { x, y, z: 0 });
     };
 
+    const onMouseMove = (e: MouseEvent) => {
+      // Reset the idle timer on every move
+      clearTimeout(this.mouseIdleTimer);
+
+      if (!this.cameraActive) {
+        // No camera — mouse always drives gaze
+        emitMouseGaze(e);
+        return;
+      }
+
+      // Camera is on — check if mouse has been moving long enough to take over
+      const now = performance.now();
+      if (!this.mouseOverride) {
+        if (this.mouseMoveStart === 0) this.mouseMoveStart = now;
+        if (now - this.mouseMoveStart >= this.MOUSE_TAKEOVER_MS) {
+          this.mouseOverride = true;
+        } else {
+          return; // not long enough yet — camera stays in control
+        }
+      }
+
+      emitMouseGaze(e);
+
+      // Schedule release back to camera after idle period
+      this.mouseIdleTimer = window.setTimeout(() => {
+        this.mouseOverride = false;
+        this.mouseMoveStart = 0;
+      }, this.MOUSE_RELEASE_MS);
+    };
+
     const onMouseLeave = () => {
-      eventBus.emit('face:lost');
+      // Release mouse override immediately on leave
+      this.mouseOverride = false;
+      this.mouseMoveStart = 0;
+      clearTimeout(this.mouseIdleTimer);
+      if (!this.cameraActive) {
+        eventBus.emit('face:lost');
+      }
     };
 
     document.addEventListener('mousemove', onMouseMove);
