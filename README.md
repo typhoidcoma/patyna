@@ -1,6 +1,10 @@
-# PATYNA
+<p align="center">
+  <img src="assets/patyna_logo.svg" alt="Patyna" width="128" height="128" />
+</p>
 
-Real-time AI avatar with voice interaction. Mint-teal butterfly-core entity that listens, thinks, and speaks.
+<h1 align="center">PATYNA</h1>
+
+<p align="center">Real-time AI avatar with voice interaction. Mint-teal butterfly-core entity that listens, thinks, and speaks.</p>
 
 <details>
 <summary>Features</summary>
