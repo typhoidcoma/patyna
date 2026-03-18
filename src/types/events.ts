@@ -64,4 +64,10 @@ export interface EventMap {
   // Demo
   'demo:taskComplete': { taskId: string; points: number; totalPoints: number; maxPoints: number };
   'demo:reset': void;
+
+  // Demo2 (LUMINORA)
+  'demo2:taskFinish': { taskId: string };
+  'demo2:openVault': void;
+  'demo2:openRhythm': void;
+  'demo2:reset': void;
 }

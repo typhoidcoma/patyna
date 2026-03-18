@@ -110,6 +110,58 @@ export interface LinearIssue {
   labels?: string[];
 }
 
+// ── Scoring types ──
+
+export interface ScoringStats {
+  xp: number;
+  streak: number;
+  achievements: Record<string, unknown>;
+}
+
+export interface LeaderboardTask {
+  id: string;
+  title: string;
+  score: number;
+  category: string;
+}
+
+export interface ScoringEvent {
+  timestamp: string;
+  taskId: string;
+  pointsAwarded: number;
+  title: string;
+}
+
+export interface Achievement {
+  id: string;
+  name: string;
+  description: string;
+  unlocked: boolean;
+  unlockedAt: string | null;
+}
+
+export interface LifeEventCreate {
+  discordUserId: string;
+  title: string;
+  description?: string;
+  category?: 'tasks' | 'health' | 'finance' | 'social' | 'work';
+  priority?: 'low' | 'medium' | 'high';
+  dueDate?: string;
+  impactLevel?: 'trivial' | 'low' | 'moderate' | 'high' | 'critical';
+  irreversible?: boolean;
+  affectsOthers?: boolean;
+  estimatedMinutes?: number;
+  sizeLabel?: 'micro' | 'small' | 'medium' | 'large' | 'epic';
+  tags?: string[];
+}
+
+export interface LifeEventResult {
+  id: string;
+  title: string;
+  scoreBreakdown: Record<string, unknown>;
+  totalScore: number;
+}
+
 // ── Client ──
 
 export interface AeloraClientConfig {
@@ -210,6 +262,75 @@ export class AeloraClient {
   /** Get API status. */
   async getStatus(): Promise<Record<string, unknown> | null> {
     return this.get<Record<string, unknown>>('/api/status');
+  }
+
+  // ── Scoring ──
+
+  /** Get user XP, streak, and achievements. */
+  async getScoringStats(userId?: string): Promise<ScoringStats | null> {
+    const id = userId ?? this._userId;
+    if (!id) return null;
+    return this.get<ScoringStats>(`/api/scoring/stats?discordUserId=${encodeURIComponent(id)}`);
+  }
+
+  /** Get pending tasks sorted by computed score. */
+  async getLeaderboard(userId?: string, limit = 20, category?: string): Promise<LeaderboardTask[] | null> {
+    const id = userId ?? this._userId;
+    if (!id) return null;
+    const params = [`discordUserId=${encodeURIComponent(id)}`, `limit=${limit}`];
+    if (category) params.push(`category=${encodeURIComponent(category)}`);
+    const resp = await this.get<{ tasks: LeaderboardTask[] }>(`/api/scoring/leaderboard?${params.join('&')}`);
+    return resp?.tasks ?? null;
+  }
+
+  /** Get recent scoring history. */
+  async getScoringHistory(userId?: string, limit = 20): Promise<ScoringEvent[] | null> {
+    const id = userId ?? this._userId;
+    if (!id) return null;
+    const resp = await this.get<{ events: ScoringEvent[] }>(`/api/scoring/history?discordUserId=${encodeURIComponent(id)}&limit=${limit}`);
+    return resp?.events ?? null;
+  }
+
+  /** Get all achievements with unlock status. */
+  async getAchievements(userId?: string): Promise<Achievement[] | null> {
+    const id = userId ?? this._userId;
+    if (!id) return null;
+    const resp = await this.get<{ achievements: Achievement[] }>(`/api/scoring/achievements?discordUserId=${encodeURIComponent(id)}`);
+    return resp?.achievements ?? null;
+  }
+
+  /** Create a life event for scoring. */
+  async createLifeEvent(data: LifeEventCreate): Promise<LifeEventResult | null> {
+    return this.request<LifeEventResult>('/api/life-events', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  // ── Todos (mutations) ──
+
+  /** Create a new todo. */
+  async createTodo(title: string, opts?: { description?: string; priority?: 'low' | 'medium' | 'high'; dueDate?: string }): Promise<TodoItem | null> {
+    return this.request<TodoItem>('/api/todos', {
+      method: 'POST',
+      body: JSON.stringify({ title, ...opts }),
+    });
+  }
+
+  /** Update an existing todo. */
+  async updateTodo(uid: string, fields: { title?: string; description?: string; priority?: string; dueDate?: string; completed?: boolean }): Promise<TodoItem | null> {
+    return this.request<TodoItem>(`/api/todos/${encodeURIComponent(uid)}`, {
+      method: 'PUT',
+      body: JSON.stringify(fields),
+    });
+  }
+
+  /** Delete a todo. */
+  async deleteTodo(uid: string): Promise<boolean> {
+    const result = await this.request<unknown>(`/api/todos/${encodeURIComponent(uid)}`, {
+      method: 'DELETE',
+    });
+    return result !== null;
   }
 
   /** Get upcoming calendar events (unwraps {events: [...]}) */

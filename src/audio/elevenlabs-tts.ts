@@ -85,12 +85,17 @@ export class ElevenLabsTTS {
         eventBus.emit('audio:ttsStreamStart');
 
         // Send BOS (beginning of stream) with settings
+        // Lower stability = more expressive; style adds emotional range
         this.ws!.send(JSON.stringify({
           text: ' ',
           voice_settings: {
-            stability: 0.5,
-            similarity_boost: 0.75,
+            stability: 0.35,
+            similarity_boost: 0.80,
+            style: 0.15,
             use_speaker_boost: true,
+          },
+          generation_config: {
+            chunk_length_schedule: [120, 160, 250, 290],
           },
           xi_api_key: apiKey,
         }));
@@ -226,8 +231,12 @@ export class ElevenLabsTTS {
       return;
     }
 
-    // Flush any remaining buffered text + send EOS
-    this.flushTextBuffer();
+    // Flush remaining text with flush flag for immediate generation
+    if (this.ws && this.state === 'streaming' && this.textBuffer) {
+      console.log(`[ElevenLabs] Final flush: ${this.textBuffer.length} chars`);
+      this.ws.send(JSON.stringify({ text: this.textBuffer, flush: true }));
+      this.textBuffer = '';
+    }
     this.sendEOS();
   }
 
