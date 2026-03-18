@@ -62,6 +62,9 @@ export interface VaultFact {
   id: string;
   emoji: string;
   text: string;             // HTML with <b> for key details
+  category?: string;        // e.g. "preference", "habit", "goal"
+  confidence?: string;      // "stated" | "inferred" | "observed"
+  savedAt?: string;
 }
 
 export interface LuminoraFixture {

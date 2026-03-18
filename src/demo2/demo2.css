@@ -992,7 +992,7 @@ body {
 
 .lum-vault-fact {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 14px;
   padding: 11px 14px;
   border-radius: var(--radius-sm);
@@ -1014,8 +1014,12 @@ body {
   flex-shrink: 0;
 }
 
-.lum-vault-fact-text {
+.lum-vault-fact-content {
   flex: 1;
+  min-width: 0;
+}
+
+.lum-vault-fact-text {
   font-size: 0.88rem;
   color: rgba(255,255,255,0.85);
   line-height: 1.45;
@@ -1024,6 +1028,28 @@ body {
 .lum-vault-fact-text b {
   color: #fff;
   font-weight: var(--font-weight-semibold);
+}
+
+.lum-vault-fact-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 3px;
+}
+
+.lum-vault-fact-badge {
+  font-size: 0.68rem;
+  padding: 1px 7px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5);
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.lum-vault-fact-confidence {
+  font-size: 0.68rem;
+  color: rgba(255,255,255,0.35);
+  font-style: italic;
 }
 
 .lum-vault-fact-chevron {

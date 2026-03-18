@@ -64,6 +64,8 @@ export class Demo2App {
   private enteredUsername = '';
   private envMesh: THREE.Mesh | null = null;
   private cleanupFns: (() => void)[] = [];
+  private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private readonly VAULT_SYNC_INTERVAL_MS = 30_000; // sync every 30s
 
   // Speaking-state tracking (same as DemoApp)
   private textStreamDone = false;
@@ -299,11 +301,30 @@ export class Demo2App {
       }
     };
 
-    // Vault button — fetch user-scoped facts then open
+    // Vault button — fetch user-scoped memory facts then open
     this.avatarFrame.onVaultClick = () => {
-      this.aeloraClient.getUser().then((profile) => {
-        if (profile?.facts?.length) {
-          this.state.applyUserFacts(profile.facts);
+      const userId = this.aeloraClient.userId;
+      const scope = userId ? `user:${userId}` : null;
+
+      Promise.all([
+        scope ? this.aeloraClient.getMemoryByScope(scope).catch(() => null) : null,
+        this.aeloraClient.getMemory().catch(() => null),
+        this.aeloraClient.getSession().catch(() => null),
+      ]).then(([scopedFacts, memory, session]) => {
+        // Prefer user-scoped facts from new endpoint
+        if (scopedFacts?.length) {
+          this.state.applyUserFacts(scopedFacts);
+          console.log(`[LUMINORA] Vault: ${scopedFacts.length} facts from /api/memory/scope (${scope})`);
+        // Fallback to all-scope memory
+        } else if (memory && Object.keys(memory).length > 0) {
+          this.state.applyMemoryFacts(memory);
+          console.log(`[LUMINORA] Vault: ${Object.values(memory).flat().length} facts from /api/memory`);
+        // Then session memories
+        } else if (session?.memories && Object.keys(session.memories).length > 0) {
+          this.state.applyMemoryFacts(session.memories);
+          console.log(`[LUMINORA] Vault: ${Object.values(session.memories).flat().length} facts from session`);
+        } else {
+          console.warn('[LUMINORA] Vault: no facts from any API, showing fixture data');
         }
       }).finally(() => {
         this.vaultModal.open(this.state.getVaultFacts());
@@ -365,6 +386,8 @@ export class Demo2App {
     eventBus.on('comm:textDone', () => {
       this.textStreamDone = true;
       this.tryFinishResponse();
+      // Sync vault after each LLM response — backend may have stored new facts
+      this.syncVault();
     });
 
     eventBus.on('audio:ttsStreamStart', () => {
@@ -498,6 +521,8 @@ export class Demo2App {
         if (result) {
           if (result.id) this.state.setLifeEventId(taskId, result.id);
           console.log(`[LUMINORA] Life event created: ${task.title} (score: ${result.totalScore ?? 'n/a'})`);
+          // Sync vault — backend stores completion as a fact
+          this.syncVault();
         }
       }).catch(() => {});
     }
@@ -526,17 +551,47 @@ export class Demo2App {
     // Fetch live API data in parallel (non-blocking — falls back to fixture)
     this.fetchLiveData();
 
+    // Periodically sync vault facts in background
+    this.vaultSyncTimer = setInterval(() => this.syncVault(), this.VAULT_SYNC_INTERVAL_MS);
+
     this.comm.connect();
+  }
+
+  /** Background-sync user facts into the vault (non-blocking). */
+  private syncVault(): void {
+    const userId = this.aeloraClient.userId;
+    const scope = userId ? `user:${userId}` : null;
+
+    Promise.all([
+      scope ? this.aeloraClient.getMemoryByScope(scope).catch(() => null) : null,
+      this.aeloraClient.getMemory().catch(() => null),
+      this.aeloraClient.getSession().catch(() => null),
+    ]).then(([scopedFacts, memory, session]) => {
+      if (scopedFacts?.length) {
+        this.state.applyUserFacts(scopedFacts);
+        console.log(`[LUMINORA] Vault synced: ${scopedFacts.length} facts from /api/memory/scope`);
+      } else if (memory && Object.keys(memory).length > 0) {
+        this.state.applyMemoryFacts(memory);
+        console.log(`[LUMINORA] Vault synced: ${Object.values(memory).flat().length} facts from /api/memory`);
+      } else if (session?.memories && Object.keys(session.memories).length > 0) {
+        this.state.applyMemoryFacts(session.memories);
+        console.log(`[LUMINORA] Vault synced: ${Object.values(session.memories).flat().length} facts from session`);
+      }
+    });
   }
 
   /** Fetch calendar, todos, memory, scoring from Aelora APIs and overlay onto state. */
   private async fetchLiveData(): Promise<void> {
     const userId = this.aeloraClient.userId;
 
-    const [calendar, todos, userProfile, scoring, leaderboard] = await Promise.all([
+    const scope = userId ? `user:${userId}` : null;
+
+    const [calendar, todos, scopedFacts, memory, session, scoring, leaderboard] = await Promise.all([
       this.aeloraClient.getCalendarEvents(3).catch(() => null),
       this.aeloraClient.getTodos('pending').catch(() => null),
-      this.aeloraClient.getUser().catch(() => null),
+      scope ? this.aeloraClient.getMemoryByScope(scope).catch(() => null) : null,
+      this.aeloraClient.getMemory().catch(() => null),
+      this.aeloraClient.getSession().catch(() => null),
       userId ? this.aeloraClient.getScoringStats(userId).catch(() => null) : null,
       userId ? this.aeloraClient.getLeaderboard(userId, 3).catch(() => null) : null,
     ]);
@@ -555,9 +610,16 @@ export class Demo2App {
       updated = true;
     }
 
-    if (userProfile?.facts?.length) {
-      this.state.applyUserFacts(userProfile.facts);
-      console.log(`[LUMINORA] Loaded ${userProfile.facts.length} user facts`);
+    // Prefer scoped user facts → all-scope memory → session memories
+    if (scopedFacts?.length) {
+      this.state.applyUserFacts(scopedFacts);
+      console.log(`[LUMINORA] Loaded ${scopedFacts.length} facts from /api/memory/scope (${scope})`);
+    } else if (memory && Object.keys(memory).length > 0) {
+      this.state.applyMemoryFacts(memory);
+      console.log(`[LUMINORA] Loaded ${Object.values(memory).flat().length} memory facts from /api/memory`);
+    } else if (session?.memories && Object.keys(session.memories).length > 0) {
+      this.state.applyMemoryFacts(session.memories);
+      console.log(`[LUMINORA] Loaded ${Object.values(session.memories).flat().length} memory facts from session`);
     }
 
     if (scoring) {
@@ -669,6 +731,10 @@ export class Demo2App {
   // ── Cleanup ──
 
   async destroy(): Promise<void> {
+    if (this.vaultSyncTimer) {
+      clearInterval(this.vaultSyncTimer);
+      this.vaultSyncTimer = null;
+    }
     for (const fn of this.cleanupFns) fn();
     this.cleanupFns.length = 0;
 

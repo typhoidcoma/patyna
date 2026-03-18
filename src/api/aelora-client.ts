@@ -14,6 +14,11 @@
 export interface MemoryFact {
   fact: string;
   savedAt: string;
+  category?: string;          // e.g. "preference", "habit", "goal", "identity"
+  confidence?: string;        // "stated" | "inferred" | "observed"
+  source?: string;            // e.g. "channel:123456"
+  lastAccessedAt?: string;
+  accessCount?: number;
 }
 
 export interface UserProfile {
@@ -227,6 +232,14 @@ export class AeloraClient {
   /** Get all memory facts grouped by scope. */
   async getMemory(): Promise<Record<string, MemoryFact[]> | null> {
     return this.get<Record<string, MemoryFact[]>>('/api/memory');
+  }
+
+  /** Get memory facts for a specific scope (e.g. "user:tyler"). */
+  async getMemoryByScope(scope: string): Promise<MemoryFact[] | null> {
+    const resp = await this.get<{ scope: string; facts: MemoryFact[] }>(
+      `/api/memory/scope?name=${encodeURIComponent(scope)}`,
+    );
+    return resp?.facts ?? null;
   }
 
   /** Get current mood state. */

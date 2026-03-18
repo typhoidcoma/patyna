@@ -49,15 +49,38 @@ export class VaultModal {
       emoji.className = 'lum-vault-fact-emoji';
       emoji.textContent = fact.emoji;
 
+      const content = document.createElement('div');
+      content.className = 'lum-vault-fact-content';
+
       const text = document.createElement('span');
       text.className = 'lum-vault-fact-text';
       text.innerHTML = fact.text;
+      content.appendChild(text);
+
+      // Category + confidence metadata line
+      if (fact.category || fact.confidence) {
+        const meta = document.createElement('div');
+        meta.className = 'lum-vault-fact-meta';
+        if (fact.category) {
+          const badge = document.createElement('span');
+          badge.className = 'lum-vault-fact-badge';
+          badge.textContent = fact.category;
+          meta.appendChild(badge);
+        }
+        if (fact.confidence && fact.confidence !== 'stated') {
+          const conf = document.createElement('span');
+          conf.className = 'lum-vault-fact-confidence';
+          conf.textContent = fact.confidence;
+          meta.appendChild(conf);
+        }
+        content.appendChild(meta);
+      }
 
       const chevron = document.createElement('span');
       chevron.className = 'lum-vault-fact-chevron';
       chevron.textContent = '›';
 
-      row.append(emoji, text, chevron);
+      row.append(emoji, content, chevron);
       list.appendChild(row);
     }
 

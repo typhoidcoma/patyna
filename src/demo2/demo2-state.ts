@@ -153,35 +153,50 @@ export class Demo2State {
   /** Overlay all memory facts (grouped by scope) into the vault. */
   applyMemoryFacts(facts: Record<string, MemoryFact[]>): void {
     const allFacts: VaultFact[] = [];
-    const emojiPool = ['💡', '📝', '🧠', '🔑', '💬', '🎯', '⭐', '🌟'];
     let idx = 0;
 
     for (const [scope, scopeFacts] of Object.entries(facts)) {
       for (const f of scopeFacts) {
         allFacts.push({
           id: `mem-${scope}-${idx}`,
-          emoji: emojiPool[idx % emojiPool.length],
+          emoji: categoryEmoji(f.category),
           text: f.fact,
+          category: f.category,
+          confidence: f.confidence,
+          savedAt: f.savedAt,
         });
         idx++;
       }
     }
 
     if (allFacts.length > 0) {
+      // Sort: stated facts first, then by most recently accessed
+      allFacts.sort((a, b) => {
+        if (a.confidence === 'stated' && b.confidence !== 'stated') return -1;
+        if (b.confidence === 'stated' && a.confidence !== 'stated') return 1;
+        return 0;
+      });
       this.fixture.vaultFacts = allFacts;
     }
   }
 
   /** Apply user-scoped facts from getUser() profile into the vault. */
   applyUserFacts(facts: MemoryFact[]): void {
-    const emojiPool = ['💡', '📝', '🧠', '🔑', '💬', '🎯', '⭐', '🌟'];
     const vaultFacts: VaultFact[] = facts.map((f, i) => ({
       id: `user-${i}`,
-      emoji: emojiPool[i % emojiPool.length],
+      emoji: categoryEmoji(f.category),
       text: f.fact,
+      category: f.category,
+      confidence: f.confidence,
+      savedAt: f.savedAt,
     }));
 
     if (vaultFacts.length > 0) {
+      vaultFacts.sort((a, b) => {
+        if (a.confidence === 'stated' && b.confidence !== 'stated') return -1;
+        if (b.confidence === 'stated' && a.confidence !== 'stated') return 1;
+        return 0;
+      });
       this.fixture.vaultFacts = vaultFacts;
     }
   }
@@ -277,4 +292,26 @@ export class Demo2State {
     this.fixture = getFixture2();
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
   }
+}
+
+/** Map a memory category to a vault icon. */
+function categoryEmoji(category?: string): string {
+  const map: Record<string, string> = {
+    // Active API categories
+    biographical: '👤',
+    contextual: '📍',
+    behavioral: '🧩',
+    // Future/extended categories
+    preference: '💜',
+    habit: '🔁',
+    goal: '🎯',
+    skill: '⚡',
+    relationship: '🤝',
+    schedule: '📅',
+    health: '💪',
+    work: '💼',
+    education: '📚',
+    emotion: '💭',
+  };
+  return map[category ?? ''] ?? '💡';
 }
