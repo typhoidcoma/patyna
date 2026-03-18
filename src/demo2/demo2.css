@@ -423,6 +423,13 @@ body {
 .lum-right::-webkit-scrollbar { width: 3px; }
 .lum-right::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 2px; }
 
+/* Busy state — avatar is thinking/speaking, block task interactions */
+.lum-right--busy .lum-top3-card:not(.completed),
+.lum-right--busy .lum-all-task-item:not(.completed) {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .lum-section-label {
   font-size: 0.74rem;
   font-weight: var(--font-weight-semibold);

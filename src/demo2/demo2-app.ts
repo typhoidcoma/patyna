@@ -246,7 +246,7 @@ export class Demo2App {
   private wireCallbacks(): void {
     // Journal submit → send to LLM
     this.journalBar.onSubmit = (text) => {
-      if (!this.comm.connected) return;
+      if (!this.comm.connected || this.isBusy()) return;
       const msg = this.state.wrapMessage(text);
       this.comm.sendMessage(msg);
       this.transitionToThinking();
@@ -254,11 +254,13 @@ export class Demo2App {
 
     // Task Start (TOP 3)
     this.goalsTasksPanel.onTaskStart = (_taskId) => {
+      if (this.isBusy()) return;
       // Timer is managed by the panel itself
     };
 
     // Task Finish (TOP 3) → open completion modal
     this.goalsTasksPanel.onTaskFinish = (taskId) => {
+      if (this.isBusy()) return;
       const task = this.state.getTasks().find(t => t.id === taskId);
       if (task) {
         this.taskCompleteModal.open(taskId, task.title);
@@ -273,31 +275,22 @@ export class Demo2App {
       this.reportTaskCompletion(data.taskId);
       if (task) this.briefing.markDueTodayByTitle(task.title);
       if (message && this.comm.connected) {
-        const s = this.stateMachine.state;
-        if (s === 'speaking' || s === 'thinking') {
-          this.pendingTaskMessage = message;
-        } else {
-          this.transitionToThinking();
-          this.comm.sendMessage(message);
-        }
+        this.transitionToThinking();
+        this.comm.sendMessage(message);
       }
     };
 
     // All task click (non-TOP3) → complete directly + API
     this.goalsTasksPanel.onAllTaskClick = (taskId) => {
+      if (this.isBusy()) return;
       const task = this.state.getTasks().find(t => t.id === taskId);
       const message = this.state.completeTask(taskId);
       this.goalsTasksPanel.markTaskComplete(taskId);
       this.reportTaskCompletion(taskId);
       if (task) this.briefing.markDueTodayByTitle(task.title);
       if (message && this.comm.connected) {
-        const s = this.stateMachine.state;
-        if (s === 'speaking' || s === 'thinking') {
-          this.pendingTaskMessage = message;
-        } else {
-          this.transitionToThinking();
-          this.comm.sendMessage(message);
-        }
+        this.transitionToThinking();
+        this.comm.sendMessage(message);
       }
     };
 
@@ -447,6 +440,7 @@ export class Demo2App {
 
   private transitionToThinking(): void {
     const s = this.stateMachine.state;
+    this.goalsTasksPanel.setBusy(true);
     if (s === 'listening') {
       this.stateMachine.transition('thinking');
     } else if (s === 'idle') {
@@ -456,6 +450,7 @@ export class Demo2App {
       this.elevenLabs.close();
       this.ttsPlayer.flush();
       this.resetSpeakingState();
+      this.goalsTasksPanel.setBusy(true);
       this.stateMachine.transition('idle');
       this.stateMachine.transition('listening');
       this.stateMachine.transition('thinking');
@@ -475,6 +470,7 @@ export class Demo2App {
       if (s === 'speaking' || s === 'thinking') {
         this.stateMachine.transition('idle');
       }
+      this.goalsTasksPanel.setBusy(false);
 
       if (this.pendingTaskMessage && this.comm.connected) {
         const msg = this.pendingTaskMessage;
@@ -494,6 +490,13 @@ export class Demo2App {
       clearTimeout(this.finishTimer);
       this.finishTimer = null;
     }
+    this.goalsTasksPanel.setBusy(false);
+  }
+
+  /** True when the avatar is thinking or speaking — blocks task interactions. */
+  private isBusy(): boolean {
+    const s = this.stateMachine.state;
+    return s === 'thinking' || s === 'speaking';
   }
 
   // ── API: report task completion ──

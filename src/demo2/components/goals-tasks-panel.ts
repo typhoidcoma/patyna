@@ -14,6 +14,7 @@ export class GoalsTasksPanel {
   private tasks: LuminoraTask[] = [];
   private activeTimerId: string | null = null;
   private timerInterval: ReturnType<typeof setInterval> | null = null;
+  private _busy = false;
 
   onTaskStart?: (taskId: string) => void;
   onTaskFinish?: (taskId: string) => void;
@@ -277,6 +278,12 @@ export class GoalsTasksPanel {
     const m = Math.floor(seconds / 60);
     const s = seconds % 60;
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+  }
+
+  /** Lock/unlock task interactions while the avatar is busy. */
+  setBusy(busy: boolean): void {
+    this._busy = busy;
+    this.el.classList.toggle('lum-right--busy', busy);
   }
 
   destroy(): void {
