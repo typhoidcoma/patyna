@@ -45,6 +45,7 @@ export interface EventMap {
   'comm:textDelta': { text: string };
   'comm:textDone': { text: string };
   'comm:mood': MoodData;
+  'comm:dataChanged': { source: string; table?: string; action?: string };
   'comm:error': { code: string; message: string };
 
   // API (Aelora REST)

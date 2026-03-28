@@ -27,6 +27,8 @@ import { DEFAULT_CONFIG, type PatynaConfig } from "@/types/config.ts";
 import type { MoodData } from "@/types/messages.ts";
 
 import { authManager, type UserProfile } from "@/auth/auth-manager.ts";
+import { fetchQuestsForUser } from "@/quests/fetch-quests.ts";
+import { subscribeQuestsForUser } from "@/quests/subscribe-quests.ts";
 
 import { Demo2State } from "./demo2-state.ts";
 import { NavBar } from "./components/nav-bar.ts";
@@ -39,6 +41,7 @@ import { TaskCompleteModal } from "./components/task-complete-modal.ts";
 import { VaultModal } from "./components/vault-modal.ts";
 import { WeeklyRhythmModal } from "./components/weekly-rhythm-modal.ts";
 import { FeedbackPanel } from "./components/feedback-panel.ts";
+import { AddTaskPanel } from "./components/add-task-panel.ts";
 
 export class Demo2App {
   private sceneManager: SceneManager;
@@ -65,6 +68,7 @@ export class Demo2App {
   private vaultModal: VaultModal;
   private weeklyRhythmModal: WeeklyRhythmModal;
   private feedbackPanel: FeedbackPanel;
+  private addTaskPanel: AddTaskPanel;
 
   private loginOverlay: HTMLDivElement | null = null;
   /** Covers the app until session is known (avoids a flash of dashboard before welcome/login). */
@@ -74,6 +78,7 @@ export class Demo2App {
   private enteredUsername = "";
   private authProfile: UserProfile | null = null;
   private unsubAuth: (() => void) | null = null;
+  private unsubQuests: (() => void) | null = null;
   private envMesh: THREE.Mesh | null = null;
   private cleanupFns: (() => void)[] = [];
   private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -197,6 +202,7 @@ export class Demo2App {
     this.vaultModal = new VaultModal(this.modalManager);
     this.weeklyRhythmModal = new WeeklyRhythmModal(this.modalManager);
     this.feedbackPanel = new FeedbackPanel(this.modalManager);
+    this.addTaskPanel = new AddTaskPanel(this.modalManager);
 
     // ── Wire callbacks ──
 
@@ -394,6 +400,29 @@ export class Demo2App {
       this.showToast("You already have max favorite tasks");
     };
 
+    this.goalsTasksPanel.onAddTaskClick = () => {
+      this.addTaskPanel.open();
+    };
+
+    this.addTaskPanel.onSubmit = async (data) => {
+      if (!this.aeloraClient.supabaseUserId) {
+        this.showToast("Sign in to add tasks");
+        return false;
+      }
+      const row = await this.aeloraClient.createQuest({
+        title: data.title,
+        description: data.description || undefined,
+        category: data.category || undefined,
+        difficulty: data.difficulty,
+      });
+      if (!row) {
+        this.showToast("Could not create task");
+        return false;
+      }
+      await this.refreshQuestTasks();
+      return true;
+    };
+
     // Task Finish (TOP 3) → open completion modal
     this.goalsTasksPanel.onTaskFinish = (taskId) => {
       if (this.isBusy()) return;
@@ -408,7 +437,9 @@ export class Demo2App {
       const task = this.state.getTasks().find((t) => t.id === data.taskId);
       const message = this.state.completeTask(data.taskId);
       this.goalsTasksPanel.markTaskComplete(data.taskId);
-      this.reportTaskCompletion(data.taskId);
+      this.reportTaskCompletion(data.taskId, {
+        notes: data.reflection.trim() || undefined,
+      });
       if (task) this.briefing.markDueTodayByTitle(task.title);
       if (message && this.comm.connected) {
         this.transitionToThinking();
@@ -513,7 +544,7 @@ export class Demo2App {
 
     // Briefing due-today toggle → update todo via API
     this.briefing.onDueTodayToggle = (itemId, completed) => {
-      // itemId format: "todo-{uid}" from applyTodos, or "due-{n}" from fixture
+      // itemId format: "todo-{uid}" from briefing todos, or "due-{n}" from fixture
       const uid = itemId.startsWith("todo-") ? itemId.slice(5) : null;
       if (uid) {
         this.aeloraClient.updateTodo(uid, { completed }).catch(() => {});
@@ -602,6 +633,18 @@ export class Demo2App {
       console.log(
         `[LUMINORA] Mood: ${mood.label} (${mood.emotion}/${mood.intensity})`,
       );
+    });
+
+    // Fallback nudge — Supabase Realtime is the primary task-sync path;
+    // this handles edge cases where the websocket hint arrives first or
+    // the realtime subscription missed a change (e.g. reconnect race).
+    eventBus.on("comm:dataChanged", ({ source, table, action }) => {
+      console.log(
+        `[LUMINORA] Data changed: ${source} ${table ?? ""} ${action ?? ""}`,
+      );
+      if (source === "supabase") {
+        this.refreshQuestTasks();
+      }
     });
 
     // ── Celebrations ──
@@ -702,11 +745,21 @@ export class Demo2App {
 
   // ── API: report task completion ──
 
-  private reportTaskCompletion(taskId: string): void {
+  private reportTaskCompletion(
+    taskId: string,
+    opts?: { notes?: string },
+  ): void {
     const task = this.state.getTasks().find((t) => t.id === taskId);
     if (!task) return;
 
-    // Mark todo as completed in Google Tasks
+    const questId = this.state.getQuestId(taskId);
+    if (questId && this.aeloraClient.supabaseUserId) {
+      this.aeloraClient
+        .completeQuest(questId, { notes: opts?.notes })
+        .catch(() => {});
+    }
+
+    // Mark todo as completed in Google Tasks (legacy todo-backed tasks)
     const todoUid = this.state.getTodoUid(taskId);
     if (todoUid) {
       this.aeloraClient
@@ -750,15 +803,17 @@ export class Demo2App {
     const username =
       profile?.displayName || this.enteredUsername || this.state.username;
     const userId = profile?.userId || username;
+    const supabaseUserId = profile?.isGuest ? undefined : profile?.userId;
     const sessionId = `patyna-${userId}`;
 
     this.config.websocket.userId = userId;
     this.config.websocket.username = username;
+    this.config.websocket.supabaseUserId = supabaseUserId;
     this.config.websocket.sessionId = sessionId;
 
-    this.aeloraClient.updateUser(userId, username);
+    this.aeloraClient.updateUser(userId, username, supabaseUserId);
     this.aeloraClient.updateSession(sessionId);
-    this.comm.updateIdentity(userId, username);
+    this.comm.updateIdentity(userId, username, supabaseUserId);
 
     await this.ttsPlayer.init();
 
@@ -767,6 +822,14 @@ export class Demo2App {
 
     // Fetch live API data in parallel (non-blocking — falls back to fixture)
     this.fetchLiveData();
+
+    // Subscribe to Supabase Realtime so quests added from chat appear automatically
+    if (supabaseUserId) {
+      this.unsubQuests?.();
+      this.unsubQuests = subscribeQuestsForUser(supabaseUserId, () =>
+        this.refreshQuestTasks(),
+      );
+    }
 
     // Periodically sync vault facts in background
     this.vaultSyncTimer = setInterval(
@@ -811,15 +874,35 @@ export class Demo2App {
     });
   }
 
+  /** Reload quests from Supabase and refresh the goals/tasks panel (keeps TOP 3). */
+  private async refreshQuestTasks(): Promise<void> {
+    const userId = this.aeloraClient.userId;
+    if (!userId) return;
+    const rows = await fetchQuestsForUser(userId);
+    if (rows === null) return;
+    this.state.applyQuests(rows);
+    this.goalsTasksPanel.setData(
+      this.state.getGoals(),
+      this.state.getTasks(),
+      this.state.pointsToday,
+      this.state.pointsYesterday,
+    );
+  }
+
   /** Fetch calendar, todos, memory, scoring from Aelora APIs and overlay onto state. */
   private async fetchLiveData(): Promise<void> {
     const userId = this.aeloraClient.userId;
 
     const scope = userId ? `user:${userId}` : null;
 
+    const questsPromise = userId
+      ? fetchQuestsForUser(userId)
+      : Promise.resolve(null);
+
     const [
       calendar,
       todos,
+      questsRows,
       scopedFacts,
       memory,
       session,
@@ -828,6 +911,7 @@ export class Demo2App {
     ] = await Promise.all([
       this.aeloraClient.getCalendarEvents(3).catch(() => null),
       this.aeloraClient.getTodos("pending").catch(() => null),
+      questsPromise,
       scope
         ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
         : null,
@@ -849,9 +933,19 @@ export class Demo2App {
       updated = true;
     }
 
+    if (questsRows !== null) {
+      this.state.applyQuests(questsRows);
+      console.log(
+        `[LUMINORA] Loaded ${questsRows.length} quest(s) from Supabase`,
+      );
+      updated = true;
+    }
+
     if (todos && todos.length > 0) {
-      this.state.applyTodos(todos);
-      console.log(`[LUMINORA] Loaded ${todos.length} todos`);
+      this.state.applyTodosToBriefing(todos);
+      console.log(
+        `[LUMINORA] Loaded ${todos.length} todos (briefing due today)`,
+      );
       updated = true;
     }
 
@@ -1024,6 +1118,8 @@ export class Demo2App {
     this.dismissAuthGateCover();
     this.unsubAuth?.();
     this.unsubAuth = null;
+    this.unsubQuests?.();
+    this.unsubQuests = null;
     if (this.toastTimer) {
       clearTimeout(this.toastTimer);
       this.toastTimer = null;

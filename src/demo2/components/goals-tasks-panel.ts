@@ -23,6 +23,8 @@ export class GoalsTasksPanel {
   onTaskFinish?: (taskId: string) => void;
   onAllTaskClick?: (taskId: string) => void;
   onMaxFavoritesReached?: () => void;
+  /** Opens the add-task overlay (e.g. ModalManager). */
+  onAddTaskClick?: () => void;
 
   constructor() {
     this.el = document.createElement('div');
@@ -49,15 +51,26 @@ export class GoalsTasksPanel {
     }
     this.el.appendChild(goalsList);
 
-    // Tasks header
-    const tasksHeader = document.createElement('div');
-    tasksHeader.className = 'lum-tasks-header';
+    const tasksTitleRow = document.createElement('div');
+    tasksTitleRow.className = 'lum-tasks-title-row';
 
     const tasksLabel = document.createElement('div');
     tasksLabel.className = 'lum-section-label';
     tasksLabel.textContent = 'TASKS';
 
-    this.el.appendChild(tasksLabel);
+    const addTaskBtn = document.createElement('button');
+    addTaskBtn.type = 'button';
+    addTaskBtn.className = 'lum-add-task-btn';
+    addTaskBtn.setAttribute('aria-label', 'Add task');
+    addTaskBtn.innerHTML =
+      '<span class="lum-add-task-btn-icon" aria-hidden="true">+</span><span class="lum-add-task-btn-text">Add</span>';
+    addTaskBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onAddTaskClick?.();
+    });
+
+    tasksTitleRow.append(tasksLabel, addTaskBtn);
+    this.el.appendChild(tasksTitleRow);
 
     const pointsRow = document.createElement('div');
     pointsRow.className = 'lum-tasks-header';
@@ -181,7 +194,7 @@ export class GoalsTasksPanel {
     if (!this.top3Container) return;
     this.top3Container.innerHTML = '';
 
-    const top3 = this.tasks.filter(t => t.isTop3);
+    const top3 = this.tasks.filter(t => t.isTop3 && !t.completed);
 
     for (let slot = 0; slot < TOP3_SLOT_COUNT; slot++) {
       const task = top3[slot];
@@ -274,7 +287,7 @@ export class GoalsTasksPanel {
     if (!this.allTasksContainer) return;
     this.allTasksContainer.innerHTML = '';
 
-    const nonTop3 = this.tasks.filter(t => !t.isTop3);
+    const nonTop3 = this.tasks.filter(t => !t.isTop3 && !t.completed);
     for (const task of nonTop3) {
       const item = document.createElement('div');
       item.className = 'lum-all-task-item';

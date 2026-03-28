@@ -8,6 +8,7 @@ export interface PatynaConfig {
     sessionId: string;
     userId?: string;
     username?: string;
+    supabaseUserId?: string;
     reconnectDelay: number;
     maxReconnectDelay: number;
   };

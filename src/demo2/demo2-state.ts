@@ -15,6 +15,8 @@ import type {
 import type {
   CalendarEvent, TodoItem, MemoryFact, ScoringStats, LeaderboardTask,
 } from '@/api/aelora-client.ts';
+import type { QuestRow } from '@/quests/quest-types.ts';
+import { mapQuestToLuminoraTask } from '@/quests/map-quest-to-task.ts';
 
 export interface LuminoraProgress {
   completed: number;
@@ -29,7 +31,10 @@ export class Demo2State {
 
   // Live API data (null = not yet loaded, use fixture)
   private _scoringStats: ScoringStats | null = null;
-  private _liveTaskMap = new Map<string, { todoUid?: string; lifeEventId?: string }>();
+  private _liveTaskMap = new Map<
+    string,
+    { todoUid?: string; lifeEventId?: string; questId?: string }
+  >();
 
   constructor() {
     this.loadFixture();
@@ -66,6 +71,11 @@ export class Demo2State {
   /** Get the todo UID backing a task (if loaded from API). */
   getTodoUid(taskId: string): string | undefined {
     return this._liveTaskMap.get(taskId)?.todoUid;
+  }
+
+  /** Supabase quest row id when the task row came from `quests` (same as task id). */
+  getQuestId(taskId: string): string | undefined {
+    return this._liveTaskMap.get(taskId)?.questId;
   }
 
   /** Store a life-event ID after creation so we can reference it. */
@@ -108,11 +118,13 @@ export class Demo2State {
     this.fixture.briefing.schedule = scheduleItems;
   }
 
-  /** Overlay real todos onto the briefing due-today list AND task list. */
-  applyTodos(todos: TodoItem[]): void {
+  /**
+   * Overlay Google todos onto the briefing due-today list only.
+   * Task list rows come from Supabase `quests` (see applyQuests).
+   */
+  applyTodosToBriefing(todos: TodoItem[]): void {
     if (!todos.length) return;
 
-    // Due today items (all pending todos)
     const pending = todos.filter(t => !t.completed);
     const dueItems: DueTodayItem[] = pending.slice(0, 6).map(t => ({
       id: `todo-${t.uid}`,
@@ -120,33 +132,30 @@ export class Demo2State {
       completed: t.completed,
     }));
     this.fixture.briefing.dueToday = dueItems;
+  }
 
-    // Merge into task list — replace ALL TASKS (non-top3) with real todos
+  /**
+   * Replace non–TOP 3 tasks with Supabase quests. Clears prior quest-backed map
+   * entries for removed rows. On fetch error, do not call this (keeps fixture/tasks).
+   */
+  applyQuests(rows: QuestRow[]): void {
     const top3 = this.fixture.tasks.filter(t => t.isTop3);
-    const emojiMap: Record<string, string> = {
-      low: '📋', medium: '📌', high: '🔥',
-    };
-    const difficultyMap: Record<string, 1 | 2 | 3 | 4 | 5> = {
-      low: 1, medium: 3, high: 4,
-    };
-    const todoTasks: LuminoraTask[] = pending.map(t => {
-      const taskId = `todo-task-${t.uid}`;
-      this._liveTaskMap.set(taskId, { todoUid: t.uid });
-      return {
-        id: taskId,
-        goalId: '',
-        title: t.title,
-        emoji: emojiMap[t.priority] ?? '📋',
-        points: t.priority === 'high' ? 10 : t.priority === 'medium' ? 7 : 5,
-        difficulty: difficultyMap[t.priority] ?? 2,
-        completed: t.completed,
-        isTop3: false,
-        timerSeconds: 0,
-        timerRunning: false,
-      };
-    });
 
-    this.fixture.tasks = [...top3, ...todoTasks];
+    for (const t of this.fixture.tasks) {
+      if (!t.isTop3 && this._liveTaskMap.get(t.id)?.questId) {
+        this._liveTaskMap.delete(t.id);
+      }
+    }
+
+    const questTasks: LuminoraTask[] = rows
+      .filter(row => row.status !== 'completed')
+      .map(row => {
+      const task = mapQuestToLuminoraTask(row);
+      this._liveTaskMap.set(task.id, { questId: row.id });
+      return task;
+      });
+
+    this.fixture.tasks = [...top3, ...questTasks];
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
   }
 
