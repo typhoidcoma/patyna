@@ -139,6 +139,17 @@ export class Demo2State {
    * entries for removed rows. On fetch error, do not call this (keeps fixture/tasks).
    */
   applyQuests(rows: QuestRow[]): void {
+    const previouslyActiveIncompleteQuestIds = new Set<string>();
+    for (const t of this.fixture.tasks) {
+      if (
+        !t.isTop3 &&
+        !t.completed &&
+        this._liveTaskMap.get(t.id)?.questId
+      ) {
+        previouslyActiveIncompleteQuestIds.add(t.id);
+      }
+    }
+
     const top3 = this.fixture.tasks.filter(t => t.isTop3);
 
     for (const t of this.fixture.tasks) {
@@ -157,6 +168,20 @@ export class Demo2State {
 
     this.fixture.tasks = [...top3, ...questTasks];
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
+
+    const nextActiveQuestIds = new Set(rows.map(r => r.id));
+    const removedQuestIds = [...previouslyActiveIncompleteQuestIds].filter(
+      id => !nextActiveQuestIds.has(id),
+    );
+    if (removedQuestIds.length > 0) {
+      const p = this.getProgress();
+      eventBus.emit('demo:taskComplete', {
+        taskId: removedQuestIds[0]!,
+        points: p.points,
+        totalPoints: p.points,
+        maxPoints: p.maxPoints,
+      });
+    }
   }
 
   /** Overlay all memory facts (grouped by scope) into the vault. */

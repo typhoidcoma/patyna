@@ -62,7 +62,14 @@ export class Demo2App {
   private briefing: DailyBriefing;
   private avatarFrame: AvatarFrame;
   private goalsTasksPanel: GoalsTasksPanel;
+  private journalHost!: HTMLDivElement;
+  private chatHistoryPanel!: HTMLDivElement;
+  private chatHistoryList!: HTMLDivElement;
+  private chatHistoryInner!: HTMLDivElement;
   private journalBar: JournalBar;
+  private chatHistoryOpen = false;
+  private readonly chatEntries: { role: "user" | "assistant"; text: string }[] =
+    [];
   private modalManager: ModalManager;
   private taskCompleteModal: TaskCompleteModal;
   private vaultModal: VaultModal;
@@ -105,7 +112,7 @@ export class Demo2App {
   private panelGazeLocked = false;
   private readonly PANEL_IDLE_MS = 1500;
   private static readonly UI_PANEL_SELECTOR =
-    ".lum-briefing, .lum-right, .lum-journal, " +
+    ".lum-briefing, .lum-right, .lum-journal, .lum-chat-history, " +
     ".lum-speech-bubble, .lum-vault-btn, .lum-backdrop, " +
     ".lum-login-overlay, .lum-toast";
 
@@ -169,9 +176,30 @@ export class Demo2App {
     this.toastEl.setAttribute("aria-live", "polite");
     container.appendChild(this.toastEl);
 
-    // Bottom: Journal
+    // Bottom: Chat history (collapsible) + Journal
+    this.journalHost = document.createElement("div");
+    this.journalHost.className = "lum-journal-host";
+
+    this.chatHistoryPanel = document.createElement("div");
+    this.chatHistoryPanel.className = "lum-chat-history";
+    this.chatHistoryPanel.setAttribute("role", "region");
+    this.chatHistoryPanel.setAttribute("aria-label", "Chat history");
+    this.chatHistoryPanel.setAttribute("aria-hidden", "true");
+
+    this.chatHistoryInner = document.createElement("div");
+    this.chatHistoryInner.className = "lum-chat-history-inner";
+
+    this.chatHistoryList = document.createElement("div");
+    this.chatHistoryList.className = "lum-chat-history-list";
+
+    this.chatHistoryInner.appendChild(this.chatHistoryList);
+    this.chatHistoryPanel.appendChild(this.chatHistoryInner);
+
     this.journalBar = new JournalBar();
-    container.appendChild(this.journalBar.el);
+    this.journalHost.append(this.chatHistoryPanel, this.journalBar.el);
+    container.appendChild(this.journalHost);
+
+    this.renderChatHistory();
 
     // ── 3D Scene ──
 
@@ -382,12 +410,20 @@ export class Demo2App {
   }
 
   private wireCallbacks(): void {
+    this.journalBar.onHistoryToggle = () => this.toggleChatHistory();
+
     // Journal submit → send to LLM
     this.journalBar.onSubmit = (text) => {
-      if (!this.comm.connected || this.isBusy()) return;
+      if (!this.comm.connected || this.isBusy()) return false;
+      this.appendChatEntry("user", text);
       const msg = this.state.wrapMessage(text);
       this.comm.sendMessage(msg);
       this.transitionToThinking();
+      return true;
+    };
+
+    this.journalBar.onVoiceError = (message) => {
+      this.showToast(message);
     };
 
     // Task Start (TOP 3)
@@ -442,6 +478,7 @@ export class Demo2App {
       });
       if (task) this.briefing.markDueTodayByTitle(task.title);
       if (message && this.comm.connected) {
+        if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
         this.transitionToThinking();
         this.comm.sendMessage(message);
       }
@@ -456,6 +493,7 @@ export class Demo2App {
       this.reportTaskCompletion(taskId);
       if (task) this.briefing.markDueTodayByTitle(task.title);
       if (message && this.comm.connected) {
+        if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
         this.transitionToThinking();
         this.comm.sendMessage(message);
       }
@@ -579,6 +617,16 @@ export class Demo2App {
       this.stateMachine.reset();
     });
 
+    const onHistoryEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !this.chatHistoryOpen) return;
+      this.chatHistoryOpen = false;
+      this.syncChatHistoryPanel();
+    };
+    document.addEventListener("keydown", onHistoryEscape);
+    this.cleanupFns.push(() =>
+      document.removeEventListener("keydown", onHistoryEscape),
+    );
+
     eventBus.on("comm:error", ({ code, message }) => {
       console.error(`[LUMINORA] Server error (${code}): ${message}`);
       this.resetSpeakingState();
@@ -594,8 +642,9 @@ export class Demo2App {
       }
     });
 
-    eventBus.on("comm:textDone", () => {
+    eventBus.on("comm:textDone", ({ text }) => {
       this.textStreamDone = true;
+      this.appendChatEntry("assistant", text);
       this.tryFinishResponse();
       // Sync vault after each LLM response — backend may have stored new facts
       this.syncVault();
@@ -730,6 +779,60 @@ export class Demo2App {
   private isBusy(): boolean {
     const s = this.stateMachine.state;
     return s === "thinking" || s === "speaking";
+  }
+
+  private toggleChatHistory(): void {
+    this.chatHistoryOpen = !this.chatHistoryOpen;
+    this.syncChatHistoryPanel();
+    if (this.chatHistoryOpen) {
+      this.renderChatHistory();
+      requestAnimationFrame(() => {
+        this.chatHistoryInner.scrollTop = this.chatHistoryInner.scrollHeight;
+      });
+    }
+  }
+
+  private syncChatHistoryPanel(): void {
+    this.chatHistoryPanel.classList.toggle(
+      "lum-chat-history--open",
+      this.chatHistoryOpen,
+    );
+    this.chatHistoryPanel.setAttribute(
+      "aria-hidden",
+      this.chatHistoryOpen ? "false" : "true",
+    );
+    this.journalBar.setHistoryOpen(this.chatHistoryOpen);
+  }
+
+  private renderChatHistory(): void {
+    this.chatHistoryList.replaceChildren();
+    if (this.chatEntries.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "lum-chat-history-empty";
+      empty.textContent = "No messages yet. Say hello to Wendy below.";
+      this.chatHistoryList.appendChild(empty);
+      return;
+    }
+    for (const e of this.chatEntries) {
+      const row = document.createElement("div");
+      row.className = `lum-chat-history-row lum-chat-history-row--${e.role}`;
+      const bubble = document.createElement("div");
+      bubble.className = `lum-chat-history-bubble lum-chat-history-bubble--${e.role}`;
+      bubble.textContent = e.text;
+      row.appendChild(bubble);
+      this.chatHistoryList.appendChild(row);
+    }
+  }
+
+  private appendChatEntry(role: "user" | "assistant", text: string): void {
+    const t = text.trim();
+    if (!t) return;
+    this.chatEntries.push({ role, text: t });
+    if (!this.chatHistoryOpen) return;
+    this.renderChatHistory();
+    requestAnimationFrame(() => {
+      this.chatHistoryInner.scrollTop = this.chatHistoryInner.scrollHeight;
+    });
   }
 
   private showToast(message: string): void {
@@ -1131,6 +1234,7 @@ export class Demo2App {
     for (const fn of this.cleanupFns) fn();
     this.cleanupFns.length = 0;
 
+    this.journalBar.destroy();
     this.goalsTasksPanel.destroy();
     this.elevenLabs.destroy();
     this.ttsPlayer.destroy();
