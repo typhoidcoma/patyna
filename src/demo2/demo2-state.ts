@@ -150,7 +150,10 @@ export class Demo2State {
       }
     }
 
-    const top3 = this.fixture.tasks.filter(t => t.isTop3);
+    const questIds = new Set(rows.map(r => r.id));
+    const preservedTop3 = this.fixture.tasks.filter(
+      t => t.isTop3 && !questIds.has(t.id),
+    );
 
     for (const t of this.fixture.tasks) {
       if (!t.isTop3 && this._liveTaskMap.get(t.id)?.questId) {
@@ -158,15 +161,21 @@ export class Demo2State {
       }
     }
 
-    const questTasks: LuminoraTask[] = rows
-      .filter(row => row.status !== 'completed')
-      .map(row => {
+    const incomplete = rows.filter(row => row.status !== 'completed');
+    incomplete.sort((a, b) => {
+      const af = a.is_favorite ? 1 : 0;
+      const bf = b.is_favorite ? 1 : 0;
+      if (bf !== af) return bf - af;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+    });
+
+    const questTasks: LuminoraTask[] = incomplete.map(row => {
       const task = mapQuestToLuminoraTask(row);
       this._liveTaskMap.set(task.id, { questId: row.id });
       return task;
-      });
+    });
 
-    this.fixture.tasks = [...top3, ...questTasks];
+    this.fixture.tasks = [...preservedTop3, ...questTasks];
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
 
     const nextActiveQuestIds = new Set(rows.map(r => r.id));

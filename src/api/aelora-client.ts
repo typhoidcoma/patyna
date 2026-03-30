@@ -389,6 +389,26 @@ export class AeloraClient {
     return result?.success ?? false;
   }
 
+  /**
+   * Set quest favorite (TOP 3) via Aelora. POST /api/quests/:id/favorite
+   * — same path Wendy/quests tool uses; triggers dataChanged + task:top3.
+   */
+  async setQuestFavorite(questId: string, isFavorite: boolean): Promise<boolean> {
+    const uid = this._supabaseUserId;
+    if (!uid) return false;
+    const result = await this.request<{ quest: QuestRow }>(
+      `/api/quests/${encodeURIComponent(questId)}/favorite`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          supabaseUserId: uid,
+          is_favorite: isFavorite,
+        }),
+      },
+    );
+    return result?.quest != null;
+  }
+
   /** Get upcoming calendar events (unwraps {events: [...]}) */
   async getCalendarEvents(days = 7): Promise<CalendarEvent[] | null> {
     const resp = await this.get<CalendarResponse>(`/api/calendar/events?days=${days}`);

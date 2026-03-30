@@ -1,3 +1,7 @@
+/**
+ * Adapts Supabase `QuestRow` records into demo2 `LuminoraTask` shapes (emoji, points,
+ * difficulty, completion, favorites). Also exposes helpers to parse difficulty and detect completion.
+ */
 import type { LuminoraTask } from '@/demo2/demo2-types.ts';
 import type {
   QuestCategory,
@@ -54,7 +58,7 @@ export function mapQuestToLuminoraTask(row: QuestRow): LuminoraTask {
     points: pointsForDifficulty(difficulty),
     difficulty,
     completed,
-    isTop3: false,
+    isTop3: row.is_favorite === true,
     timerSeconds: 0,
     timerRunning: false,
   };

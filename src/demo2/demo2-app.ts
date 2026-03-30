@@ -436,6 +436,32 @@ export class Demo2App {
       this.showToast("You already have max favorite tasks");
     };
 
+    this.goalsTasksPanel.onSetTaskFavorite = async (taskId, favorite) => {
+      const questId = this.state.getQuestId(taskId);
+      if (!questId) {
+        const t = this.state.getTasks().find((x) => x.id === taskId);
+        if (t) t.isTop3 = favorite;
+        this.goalsTasksPanel.setData(
+          this.state.getGoals(),
+          this.state.getTasks(),
+          this.state.pointsToday,
+          this.state.pointsYesterday,
+        );
+        return true;
+      }
+      if (!this.aeloraClient.supabaseUserId) {
+        this.showToast("Sign in to sync favorites");
+        return false;
+      }
+      const ok = await this.aeloraClient.setQuestFavorite(questId, favorite);
+      if (!ok) {
+        this.showToast("Could not update favorites");
+        return false;
+      }
+      await this.refreshQuestTasks();
+      return true;
+    };
+
     this.goalsTasksPanel.onAddTaskClick = () => {
       this.addTaskPanel.open();
     };

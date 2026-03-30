@@ -196,6 +196,14 @@ export class CommManager {
         });
         break;
       }
+      case 'task:top3': {
+        eventBus.emit('comm:dataChanged', {
+          source: 'supabase',
+          table: 'quests',
+          action: 'favorite',
+        });
+        break;
+      }
       case 'mindmap': {
         const d = data as {
           type?: string;

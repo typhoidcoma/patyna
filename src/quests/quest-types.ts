@@ -35,6 +35,8 @@ export interface QuestRow {
   status: QuestStatus;
   difficulty: QuestDifficulty;
   suggested_by: QuestSuggestedBy;
+  /** When true, task appears in TOP 3 (synced via Aelora favorite / PUT quest). */
+  is_favorite?: boolean;
   created_at: string;
   completed_at: string | null;
   updated_at: string | null;

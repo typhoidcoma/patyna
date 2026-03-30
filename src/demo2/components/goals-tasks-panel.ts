@@ -25,6 +25,11 @@ export class GoalsTasksPanel {
   onMaxFavoritesReached?: () => void;
   /** Opens the add-task overlay (e.g. ModalManager). */
   onAddTaskClick?: () => void;
+  /**
+   * Persist favorite (TOP 3) for Supabase-backed quests via Aelora.
+   * When set, star clicks await this and skip local-only mutation on success (parent refreshes).
+   */
+  onSetTaskFavorite?: (taskId: string, favorite: boolean) => Promise<boolean>;
 
   constructor() {
     this.el = document.createElement('div');
@@ -153,10 +158,15 @@ export class GoalsTasksPanel {
     btn.setAttribute('aria-label', 'Remove from top tasks');
     btn.setAttribute('aria-pressed', 'true');
     btn.innerHTML = this.starSvg();
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (this._busy) return;
       if (task.id === this.activeTimerId) this.stopTimer();
+      if (this.onSetTaskFavorite) {
+        const ok = await this.onSetTaskFavorite(task.id, false);
+        if (!ok) return;
+        return;
+      }
       task.isTop3 = false;
       this.renderTop3();
       this.renderAllTasks();
@@ -172,11 +182,16 @@ export class GoalsTasksPanel {
     btn.setAttribute('aria-label', 'Add to top tasks');
     btn.setAttribute('aria-pressed', 'false');
     btn.innerHTML = this.starSvg();
-    btn.addEventListener('click', (e) => {
+    btn.addEventListener('click', async (e) => {
       e.stopPropagation();
       if (this._busy) return;
       if (this.topFavoriteCount() >= MAX_TOP_FAVORITES) {
         this.onMaxFavoritesReached?.();
+        return;
+      }
+      if (this.onSetTaskFavorite) {
+        const ok = await this.onSetTaskFavorite(task.id, true);
+        if (!ok) return;
         return;
       }
       task.isTop3 = true;
