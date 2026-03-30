@@ -52,11 +52,7 @@ export class DailyBriefing {
     schedHeader.style.cursor = 'pointer';
     schedHeader.addEventListener('click', () => this.onScheduleHeaderClick?.());
 
-    const schedAvatar = document.createElement('div');
-    schedAvatar.className = 'lum-schedule-avatar';
-    schedAvatar.textContent = '🦋';
-
-    schedHeader.append(schedLabel, schedAvatar);
+    schedHeader.appendChild(schedLabel);
     this.el.appendChild(schedHeader);
 
     const schedList = document.createElement('div');

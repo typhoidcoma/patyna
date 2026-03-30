@@ -25,6 +25,8 @@ export class GoalsTasksPanel {
   onMaxFavoritesReached?: () => void;
   /** Opens the add-task overlay (e.g. ModalManager). */
   onAddTaskClick?: () => void;
+  /** Butterfly next to GOALS — opens Weekly Rhythm (same as schedule header in briefing). */
+  onWeeklyRhythmClick?: () => void;
   /**
    * Persist favorite (TOP 3) for Supabase-backed quests via Aelora.
    * When set, star clicks await this and skip local-only mutation on success (parent refreshes).
@@ -41,10 +43,25 @@ export class GoalsTasksPanel {
     this.el.innerHTML = '';
 
     // Goals section
+    const goalsTitleRow = document.createElement('div');
+    goalsTitleRow.className = 'lum-goals-title-row';
+
     const goalsLabel = document.createElement('div');
     goalsLabel.className = 'lum-section-label';
     goalsLabel.textContent = 'GOALS';
-    this.el.appendChild(goalsLabel);
+
+    const rhythmBtn = document.createElement('button');
+    rhythmBtn.type = 'button';
+    rhythmBtn.className = 'lum-schedule-avatar lum-goals-rhythm-btn';
+    rhythmBtn.setAttribute('aria-label', 'Open weekly rhythm');
+    rhythmBtn.textContent = '🦋';
+    rhythmBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.onWeeklyRhythmClick?.();
+    });
+
+    goalsTitleRow.append(goalsLabel, rhythmBtn);
+    this.el.appendChild(goalsTitleRow);
 
     const goalsList = document.createElement('div');
     goalsList.className = 'lum-goals-list';

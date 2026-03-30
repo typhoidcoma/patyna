@@ -10,7 +10,7 @@ const FIXTURE: LuminoraFixture = {
 
   briefing: {
     dayLabel: 'TUESDAY',
-    weekLabel: 'WEEK 8',
+    weekLabel: 'MARCH 30, 2026',
     headline: 'Thesis draft is <em>closer</em> than it feels.',
     sleepHours: 6,
     sleepNote:

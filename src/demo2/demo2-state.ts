@@ -53,7 +53,13 @@ export class Demo2State {
 
   getGoals(): LuminoraGoal[] { return this.fixture.goals; }
   getTasks(): LuminoraTask[] { return this.fixture.tasks; }
-  getBriefing(): DailyBriefing { return this.fixture.briefing; }
+  getBriefing(): DailyBriefing {
+    return {
+      ...this.fixture.briefing,
+      dayLabel: localDayLabelUpper(),
+      weekLabel: localDateLabelUpper(),
+    };
+  }
   getHabits(): Habit[] { return this.fixture.habits; }
   getVaultFacts(): VaultFact[] { return this.fixture.vaultFacts; }
 
@@ -321,21 +327,45 @@ export class Demo2State {
 
   buildContext(): string {
     const briefing = this.fixture.briefing;
+    const dayLabel = localDayLabelUpper();
+    const dateLabel = localDateLabelUpper();
     const schedule = briefing.schedule.map(s => `${s.time} ${s.title}`).join(', ');
     const goals = this.fixture.goals.map(g => g.title).join(', ');
+    const dueToday = briefing.dueToday
+      .filter(d => !d.completed)
+      .map(d => d.title)
+      .join(', ');
     const remaining = this.fixture.tasks
       .filter(t => !t.completed)
       .map(t => `${t.title} (${t.points}pts)`)
       .join(', ');
     const progress = this.getProgress();
 
-    return `[Context] ${briefing.dayLabel} ${briefing.weekLabel} | Schedule: ${schedule} | Goals: ${goals} | Remaining: ${remaining || 'none'} | ${progress.points}/${progress.maxPoints} points`;
+    return `[Context] ${dayLabel} ${dateLabel} | Schedule: ${schedule} | Goals: ${goals} | Due today: ${dueToday || 'none'} | Remaining: ${remaining || 'none'} | ${progress.points}/${progress.maxPoints} points`;
   }
 
   private loadFixture(): void {
     this.fixture = getFixture2();
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
   }
+}
+
+/** User's local weekday, uppercased to match the briefing pill style. */
+function localDayLabelUpper(): string {
+  return new Date()
+    .toLocaleDateString(undefined, { weekday: 'long' })
+    .toUpperCase();
+}
+
+/** User's local calendar date (month day, year), uppercased to match the pill. */
+function localDateLabelUpper(): string {
+  return new Date()
+    .toLocaleDateString(undefined, {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    })
+    .toUpperCase();
 }
 
 /** Map a memory category to a vault icon. */

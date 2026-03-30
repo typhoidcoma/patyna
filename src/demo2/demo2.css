@@ -551,6 +551,35 @@ body {
   color: var(--lum-pink-deep);
 }
 
+.lum-goals-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.lum-goals-title-row .lum-section-label {
+  margin: 0;
+}
+
+button.lum-goals-rhythm-btn {
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: transform 0.1s ease, filter 0.15s ease;
+}
+
+button.lum-goals-rhythm-btn:hover {
+  filter: brightness(1.05);
+}
+
+button.lum-goals-rhythm-btn:active {
+  transform: scale(0.96);
+}
+
 .lum-tasks-title-row {
   display: flex;
   align-items: center;

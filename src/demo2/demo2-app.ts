@@ -615,10 +615,11 @@ export class Demo2App {
       }
     };
 
-    // Schedule header → open Weekly Rhythm modal
-    this.briefing.onScheduleHeaderClick = () => {
+    const openWeeklyRhythm = () => {
       this.weeklyRhythmModal.open(this.state.getHabits());
     };
+    this.briefing.onScheduleHeaderClick = openWeeklyRhythm;
+    this.goalsTasksPanel.onWeeklyRhythmClick = openWeeklyRhythm;
   }
 
   private setupListeners(): void {
@@ -651,6 +652,15 @@ export class Demo2App {
     document.addEventListener("keydown", onHistoryEscape);
     this.cleanupFns.push(() =>
       document.removeEventListener("keydown", onHistoryEscape),
+    );
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      this.briefing.setData(this.state.getBriefing());
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    this.cleanupFns.push(() =>
+      document.removeEventListener("visibilitychange", onVisibilityChange),
     );
 
     eventBus.on("comm:error", ({ code, message }) => {

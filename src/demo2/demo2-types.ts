@@ -33,8 +33,8 @@ export interface DueTodayItem {
 }
 
 export interface DailyBriefing {
-  dayLabel: string;       // "TUESDAY"
-  weekLabel: string;      // "WEEK 8"
+  dayLabel: string;       // weekday, e.g. "TUESDAY" (often from local date)
+  weekLabel: string;      // full date for pill, e.g. "MARCH 30, 2026"
   headline: string;       // HTML with <b>/<em> for styling
   sleepHours: number;
   sleepNote: string;      // extra context paragraph
