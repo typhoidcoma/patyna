@@ -46,6 +46,10 @@ export interface EventMap {
   'comm:textDone': { text: string };
   'comm:mood': MoodData;
   'comm:dataChanged': { source: string; table?: string; action?: string };
+  /** Aelora `start_task` tool — sync TOP 3 timer with assistant action. */
+  'comm:taskStart': { questId: string; title?: string };
+  /** Aelora `finish_task` tool — open Task Complete modal (user still confirms). */
+  'comm:taskFinish': { questId: string; title?: string };
   'comm:error': { code: string; message: string };
 
   // API (Aelora REST)

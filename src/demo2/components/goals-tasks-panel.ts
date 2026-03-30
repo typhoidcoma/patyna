@@ -146,6 +146,27 @@ export class GoalsTasksPanel {
     }
   }
 
+  /**
+   * Start the TOP 3 session timer when the assistant runs `start_task` (Aelora `task:start` event).
+   * Does not consult avatar busy state — the server already validated the quest.
+   */
+  startTop3TimerForQuestId(questId: string): boolean {
+    const task = this.tasks.find(
+      t => t.id === questId && t.isTop3 && !t.completed,
+    );
+    if (!task) return false;
+    this.startTimer(task.id);
+    this.onTaskStart?.(task.id);
+    return true;
+  }
+
+  /** Stop the running TOP 3 timer when it belongs to this quest (e.g. Wendy `finish_task`). */
+  stopTop3TimerIfForQuest(questId: string): void {
+    if (this.activeTimerId !== questId) return;
+    this.stopTimer();
+    this.renderTop3();
+  }
+
   private topFavoriteCount(): number {
     return this.tasks.filter(t => t.isTop3).length;
   }

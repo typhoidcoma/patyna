@@ -204,6 +204,30 @@ export class CommManager {
         });
         break;
       }
+      case 'task:start': {
+        const d = data as { questId?: string; title?: string };
+        if (typeof d.questId === 'string' && d.questId.length > 0) {
+          eventBus.emit('comm:taskStart', {
+            questId: d.questId,
+            title: typeof d.title === 'string' ? d.title : undefined,
+          });
+        } else {
+          console.warn('[Comm] task:start missing questId:', data);
+        }
+        break;
+      }
+      case 'task:finish': {
+        const d = data as { questId?: string; title?: string };
+        if (typeof d.questId === 'string' && d.questId.length > 0) {
+          eventBus.emit('comm:taskFinish', {
+            questId: d.questId,
+            title: typeof d.title === 'string' ? d.title : undefined,
+          });
+        } else {
+          console.warn('[Comm] task:finish missing questId:', data);
+        }
+        break;
+      }
       case 'mindmap': {
         const d = data as {
           type?: string;

@@ -722,6 +722,32 @@ export class Demo2App {
       }
     });
 
+    // TOP 3 timer start — from Aelora `task:start` event
+    eventBus.on("comm:taskStart", ({ questId }) => {
+      const ok = this.goalsTasksPanel.startTop3TimerForQuestId(questId);
+      if (!ok) {
+        console.warn(
+          "[LUMINORA] task:start: no matching TOP 3 task for questId",
+          questId,
+        );
+      }
+    });
+
+    eventBus.on("comm:taskFinish", ({ questId, title }) => {
+      const task = this.state
+        .getTasks()
+        .find((t) => t.id === questId && t.isTop3 && !t.completed);
+      if (!task) {
+        console.warn(
+          "[LUMINORA] task:finish: no matching TOP 3 task for questId",
+          questId,
+        );
+        return;
+      }
+      this.goalsTasksPanel.stopTop3TimerIfForQuest(questId);
+      this.taskCompleteModal.open(questId, title ?? task.title);
+    });
+
     // ── Celebrations ──
 
     eventBus.on("demo:taskComplete", ({ totalPoints, maxPoints }) => {
