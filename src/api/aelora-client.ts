@@ -1,6 +1,13 @@
 /**
- * Aelora REST API client — stateless HTTP calls for memory,
- * user profiles, sessions, notes, and mood.
+ * Aelora REST API client — the single command layer for Patyna.
+ *
+ * Responsibilities:
+ *   - All task/quest mutations (create, complete) — Aelora owns writes.
+ *   - Memory, scoring, calendar, todos, mood, notes, and user profile reads.
+ *
+ * Patyna never writes to Supabase directly for task data; it reads via
+ * the Supabase JS client (RLS-scoped) and subscribes to Realtime for
+ * live sync. All mutations flow through this client to Aelora.
  *
  * Base URL is derived from the WebSocket URL:
  *   wss://host/ws  →  https://host
@@ -8,6 +15,8 @@
  *
  * All methods return null on failure (non-blocking, logged).
  */
+
+import { DEFAULT_QUEST_TYPE, type QuestRow } from '@/quests/quest-types.ts';
 
 // ── Response types ──
 
@@ -171,6 +180,7 @@ export interface AeloraClientConfig {
   sessionId: string;
   userId?: string;
   username?: string;
+  supabaseUserId?: string;
 }
 
 export class AeloraClient {
@@ -179,16 +189,19 @@ export class AeloraClient {
   private _sessionId: string;
   private _userId?: string;
   private _username?: string;
+  private _supabaseUserId?: string;
 
   get sessionId(): string { return this._sessionId; }
   get userId(): string | undefined { return this._userId; }
   get username(): string | undefined { return this._username; }
+  get supabaseUserId(): string | undefined { return this._supabaseUserId; }
 
   constructor(config: AeloraClientConfig) {
     this.baseUrl = config.baseUrl ?? this.deriveBaseUrl(config.wsUrl);
     this._sessionId = config.sessionId;
     this._userId = config.userId;
     this._username = config.username;
+    this._supabaseUserId = config.supabaseUserId;
 
     this.headers = { 'Content-Type': 'application/json' };
     if (config.apiKey) {
@@ -199,9 +212,10 @@ export class AeloraClient {
   }
 
   /** Update user identity (called after login, before connect). */
-  updateUser(userId: string, username: string): void {
+  updateUser(userId: string, username: string, supabaseUserId?: string): void {
     this._userId = userId;
     this._username = username;
+    this._supabaseUserId = supabaseUserId;
   }
 
   /** Update session ID (called after login to scope session to the user). */
@@ -341,6 +355,72 @@ export class AeloraClient {
     return result !== null;
   }
 
+  // ── Quests (Aelora-owned mutations — server writes to Supabase) ──
+
+  /** Create a quest via Aelora. Requires Supabase Auth `user.id` (pass `supabaseUserId` or set via `updateUser`). */
+  async createQuest(input: {
+    title: string;
+    description?: string;
+    category?: string;
+    difficulty?: string;
+    /** When set, sent as `supabaseUserId` in the JSON body (overrides cached client id). */
+    supabaseUserId?: string;
+  }): Promise<QuestRow | null> {
+    const { supabaseUserId: explicitUid, ...fields } = input;
+    const uid = (explicitUid?.trim() || this._supabaseUserId)?.trim();
+    if (!uid) return null;
+    return this.request<QuestRow>('/api/quests', {
+      method: 'POST',
+      body: JSON.stringify({
+        supabaseUserId: uid,
+        ...fields,
+        quest_type: DEFAULT_QUEST_TYPE,
+      }),
+    });
+  }
+
+  /** Mark a quest completed via Aelora. Requires Supabase Auth user id (pass or set via `updateUser`). */
+  async completeQuest(
+    questId: string,
+    opts?: { notes?: string; supabaseUserId?: string },
+  ): Promise<boolean> {
+    const uid = (opts?.supabaseUserId?.trim() || this._supabaseUserId)?.trim();
+    if (!uid) return false;
+    const { notes } = opts ?? {};
+    const result = await this.request<{ success: boolean }>(
+      `/api/quests/${encodeURIComponent(questId)}/complete`,
+      {
+        method: 'POST',
+        body: JSON.stringify({ supabaseUserId: uid, notes }),
+      },
+    );
+    return result?.success ?? false;
+  }
+
+  /**
+   * Set quest favorite (TOP 3) via Aelora. POST /api/quests/:id/favorite
+   * — same path Wendy/quests tool uses; triggers dataChanged + task:top3.
+   */
+  async setQuestFavorite(
+    questId: string,
+    isFavorite: boolean,
+    supabaseUserId?: string,
+  ): Promise<boolean> {
+    const uid = (supabaseUserId?.trim() || this._supabaseUserId)?.trim();
+    if (!uid) return false;
+    const result = await this.request<{ quest: QuestRow }>(
+      `/api/quests/${encodeURIComponent(questId)}/favorite`,
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          supabaseUserId: uid,
+          is_favorite: isFavorite,
+        }),
+      },
+    );
+    return result?.quest != null;
+  }
+
   /** Get upcoming calendar events (unwraps {events: [...]}) */
   async getCalendarEvents(days = 7): Promise<CalendarEvent[] | null> {
     const resp = await this.get<CalendarResponse>(`/api/calendar/events?days=${days}`);
@@ -381,7 +461,19 @@ export class AeloraClient {
       });
 
       if (!resp.ok) {
-        console.warn(`[AeloraClient] ${options?.method ?? 'GET'} ${path} → ${resp.status}`);
+        let detail = '';
+        try {
+          const ct = resp.headers.get('content-type') ?? '';
+          if (ct.includes('application/json')) {
+            const body = (await resp.clone().json()) as { error?: string; hint?: string };
+            if (body?.error) detail = ` — ${body.error}${body.hint ? ` (${body.hint})` : ''}`;
+          }
+        } catch {
+          /* ignore parse errors */
+        }
+        console.warn(
+          `[AeloraClient] ${options?.method ?? 'GET'} ${path} → ${resp.status}${detail}`,
+        );
         return null;
       }
 

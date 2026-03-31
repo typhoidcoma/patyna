@@ -20,6 +20,6 @@ export interface STTProvider {
   /** Start recognition. Results delivered via callback. */
   start(onResult: STTCallback): void;
 
-  /** Stop recognition. */
-  stop(): void;
+  /** Stop recognition. Optional callback runs once the session has fully ended. */
+  stop(onStopped?: () => void): void;
 }

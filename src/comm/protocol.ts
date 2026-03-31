@@ -89,9 +89,10 @@ export class CommManager {
   }
 
   /** Update user identity (called after login, before connect). */
-  updateIdentity(userId: string, username: string): void {
+  updateIdentity(userId: string, username: string, supabaseUserId?: string): void {
     this.config.websocket.userId = userId;
     this.config.websocket.username = username;
+    this.config.websocket.supabaseUserId = supabaseUserId;
   }
 
   /** Send any client message. */
@@ -111,6 +112,7 @@ export class CommManager {
       sessionId: this.config.websocket.sessionId,
       userId: this.config.websocket.userId,
       username: this.config.websocket.username,
+      supabaseUserId: this.config.websocket.supabaseUserId,
     });
   }
 
@@ -184,6 +186,67 @@ export class CommManager {
       case 'mood':
         eventBus.emit('comm:mood', data as MoodData);
         break;
+      case 'data:changed':
+      case 'dataChanged': {
+        const payload = data as { source?: string; table?: string; action?: string };
+        eventBus.emit('comm:dataChanged', {
+          source: payload.source ?? 'supabase',
+          table: payload.table,
+          action: payload.action,
+        });
+        break;
+      }
+      case 'task:top3': {
+        eventBus.emit('comm:dataChanged', {
+          source: 'supabase',
+          table: 'quests',
+          action: 'favorite',
+        });
+        break;
+      }
+      case 'task:start': {
+        const d = data as { questId?: string; title?: string };
+        if (typeof d.questId === 'string' && d.questId.length > 0) {
+          eventBus.emit('comm:taskStart', {
+            questId: d.questId,
+            title: typeof d.title === 'string' ? d.title : undefined,
+          });
+        } else {
+          console.warn('[Comm] task:start missing questId:', data);
+        }
+        break;
+      }
+      case 'task:finish': {
+        const d = data as { questId?: string; title?: string };
+        if (typeof d.questId === 'string' && d.questId.length > 0) {
+          eventBus.emit('comm:taskFinish', {
+            questId: d.questId,
+            title: typeof d.title === 'string' ? d.title : undefined,
+          });
+        } else {
+          console.warn('[Comm] task:finish missing questId:', data);
+        }
+        break;
+      }
+      case 'mindmap': {
+        const d = data as {
+          type?: string;
+          toolName?: string;
+          success?: boolean;
+        };
+        const questTool =
+          d.toolName === 'quests' || d.toolName === 'quest';
+        if (d.type === 'tool:end' && questTool && d.success === true) {
+          eventBus.emit('comm:dataChanged', {
+            source: 'supabase',
+            table: 'quests',
+            action: 'tool-end',
+          });
+        } else {
+          console.log('[Comm] Unhandled event:', event, data);
+        }
+        break;
+      }
       default:
         console.log('[Comm] Unhandled event:', event, data);
     }

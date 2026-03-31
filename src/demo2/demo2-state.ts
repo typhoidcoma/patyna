@@ -15,6 +15,8 @@ import type {
 import type {
   CalendarEvent, TodoItem, MemoryFact, ScoringStats, LeaderboardTask,
 } from '@/api/aelora-client.ts';
+import type { QuestRow } from '@/quests/quest-types.ts';
+import { mapQuestToLuminoraTask } from '@/quests/map-quest-to-task.ts';
 
 export interface LuminoraProgress {
   completed: number;
@@ -29,7 +31,10 @@ export class Demo2State {
 
   // Live API data (null = not yet loaded, use fixture)
   private _scoringStats: ScoringStats | null = null;
-  private _liveTaskMap = new Map<string, { todoUid?: string; lifeEventId?: string }>();
+  private _liveTaskMap = new Map<
+    string,
+    { todoUid?: string; lifeEventId?: string; questId?: string }
+  >();
 
   constructor() {
     this.loadFixture();
@@ -48,7 +53,13 @@ export class Demo2State {
 
   getGoals(): LuminoraGoal[] { return this.fixture.goals; }
   getTasks(): LuminoraTask[] { return this.fixture.tasks; }
-  getBriefing(): DailyBriefing { return this.fixture.briefing; }
+  getBriefing(): DailyBriefing {
+    return {
+      ...this.fixture.briefing,
+      dayLabel: localDayLabelUpper(),
+      weekLabel: localDateLabelUpper(),
+    };
+  }
   getHabits(): Habit[] { return this.fixture.habits; }
   getVaultFacts(): VaultFact[] { return this.fixture.vaultFacts; }
 
@@ -66,6 +77,11 @@ export class Demo2State {
   /** Get the todo UID backing a task (if loaded from API). */
   getTodoUid(taskId: string): string | undefined {
     return this._liveTaskMap.get(taskId)?.todoUid;
+  }
+
+  /** Supabase quest row id when the task row came from `quests` (same as task id). */
+  getQuestId(taskId: string): string | undefined {
+    return this._liveTaskMap.get(taskId)?.questId;
   }
 
   /** Store a life-event ID after creation so we can reference it. */
@@ -108,11 +124,13 @@ export class Demo2State {
     this.fixture.briefing.schedule = scheduleItems;
   }
 
-  /** Overlay real todos onto the briefing due-today list AND task list. */
-  applyTodos(todos: TodoItem[]): void {
+  /**
+   * Overlay Google todos onto the briefing due-today list only.
+   * Task list rows come from Supabase `quests` (see applyQuests).
+   */
+  applyTodosToBriefing(todos: TodoItem[]): void {
     if (!todos.length) return;
 
-    // Due today items (all pending todos)
     const pending = todos.filter(t => !t.completed);
     const dueItems: DueTodayItem[] = pending.slice(0, 6).map(t => ({
       id: `todo-${t.uid}`,
@@ -120,34 +138,65 @@ export class Demo2State {
       completed: t.completed,
     }));
     this.fixture.briefing.dueToday = dueItems;
+  }
 
-    // Merge into task list — replace ALL TASKS (non-top3) with real todos
-    const top3 = this.fixture.tasks.filter(t => t.isTop3);
-    const emojiMap: Record<string, string> = {
-      low: '📋', medium: '📌', high: '🔥',
-    };
-    const difficultyMap: Record<string, 1 | 2 | 3 | 4 | 5> = {
-      low: 1, medium: 3, high: 4,
-    };
-    const todoTasks: LuminoraTask[] = pending.map(t => {
-      const taskId = `todo-task-${t.uid}`;
-      this._liveTaskMap.set(taskId, { todoUid: t.uid });
-      return {
-        id: taskId,
-        goalId: '',
-        title: t.title,
-        emoji: emojiMap[t.priority] ?? '📋',
-        points: t.priority === 'high' ? 10 : t.priority === 'medium' ? 7 : 5,
-        difficulty: difficultyMap[t.priority] ?? 2,
-        completed: t.completed,
-        isTop3: false,
-        timerSeconds: 0,
-        timerRunning: false,
-      };
+  /**
+   * Replace non–TOP 3 tasks with Supabase quests. Clears prior quest-backed map
+   * entries for removed rows. On fetch error, do not call this (keeps fixture/tasks).
+   */
+  applyQuests(rows: QuestRow[]): void {
+    const previouslyActiveIncompleteQuestIds = new Set<string>();
+    for (const t of this.fixture.tasks) {
+      if (
+        !t.isTop3 &&
+        !t.completed &&
+        this._liveTaskMap.get(t.id)?.questId
+      ) {
+        previouslyActiveIncompleteQuestIds.add(t.id);
+      }
+    }
+
+    const questIds = new Set(rows.map(r => r.id));
+    const preservedTop3 = this.fixture.tasks.filter(
+      t => t.isTop3 && !questIds.has(t.id),
+    );
+
+    for (const t of this.fixture.tasks) {
+      if (!t.isTop3 && this._liveTaskMap.get(t.id)?.questId) {
+        this._liveTaskMap.delete(t.id);
+      }
+    }
+
+    const incomplete = rows.filter(row => row.status !== 'completed');
+    incomplete.sort((a, b) => {
+      const af = a.is_favorite ? 1 : 0;
+      const bf = b.is_favorite ? 1 : 0;
+      if (bf !== af) return bf - af;
+      return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
     });
 
-    this.fixture.tasks = [...top3, ...todoTasks];
+    const questTasks: LuminoraTask[] = incomplete.map(row => {
+      const task = mapQuestToLuminoraTask(row);
+      this._liveTaskMap.set(task.id, { questId: row.id });
+      return task;
+    });
+
+    this.fixture.tasks = [...preservedTop3, ...questTasks];
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
+
+    const nextActiveQuestIds = new Set(rows.map(r => r.id));
+    const removedQuestIds = [...previouslyActiveIncompleteQuestIds].filter(
+      id => !nextActiveQuestIds.has(id),
+    );
+    if (removedQuestIds.length > 0) {
+      const p = this.getProgress();
+      eventBus.emit('demo:taskComplete', {
+        taskId: removedQuestIds[0]!,
+        points: p.points,
+        totalPoints: p.points,
+        maxPoints: p.maxPoints,
+      });
+    }
   }
 
   /** Overlay all memory facts (grouped by scope) into the vault. */
@@ -278,21 +327,45 @@ export class Demo2State {
 
   buildContext(): string {
     const briefing = this.fixture.briefing;
+    const dayLabel = localDayLabelUpper();
+    const dateLabel = localDateLabelUpper();
     const schedule = briefing.schedule.map(s => `${s.time} ${s.title}`).join(', ');
     const goals = this.fixture.goals.map(g => g.title).join(', ');
+    const dueToday = briefing.dueToday
+      .filter(d => !d.completed)
+      .map(d => d.title)
+      .join(', ');
     const remaining = this.fixture.tasks
       .filter(t => !t.completed)
       .map(t => `${t.title} (${t.points}pts)`)
       .join(', ');
     const progress = this.getProgress();
 
-    return `[Context] ${briefing.dayLabel} ${briefing.weekLabel} | Schedule: ${schedule} | Goals: ${goals} | Remaining: ${remaining || 'none'} | ${progress.points}/${progress.maxPoints} points`;
+    return `[Context] ${dayLabel} ${dateLabel} | Schedule: ${schedule} | Goals: ${goals} | Due today: ${dueToday || 'none'} | Remaining: ${remaining || 'none'} | ${progress.points}/${progress.maxPoints} points`;
   }
 
   private loadFixture(): void {
     this.fixture = getFixture2();
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
   }
+}
+
+/** User's local weekday, uppercased to match the briefing pill style. */
+function localDayLabelUpper(): string {
+  return new Date()
+    .toLocaleDateString(undefined, { weekday: 'long' })
+    .toUpperCase();
+}
+
+/** User's local calendar date (month day, year), uppercased to match the pill. */
+function localDateLabelUpper(): string {
+  return new Date()
+    .toLocaleDateString(undefined, {
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+    })
+    .toUpperCase();
 }
 
 /** Map a memory category to a vault icon. */

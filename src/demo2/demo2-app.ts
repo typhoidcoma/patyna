@@ -27,6 +27,8 @@ import { DEFAULT_CONFIG, type PatynaConfig } from "@/types/config.ts";
 import type { MoodData } from "@/types/messages.ts";
 
 import { authManager, type UserProfile } from "@/auth/auth-manager.ts";
+import { fetchQuestsForUser } from "@/quests/fetch-quests.ts";
+import { subscribeQuestsForUser } from "@/quests/subscribe-quests.ts";
 
 import { Demo2State } from "./demo2-state.ts";
 import { NavBar } from "./components/nav-bar.ts";
@@ -39,6 +41,7 @@ import { TaskCompleteModal } from "./components/task-complete-modal.ts";
 import { VaultModal } from "./components/vault-modal.ts";
 import { WeeklyRhythmModal } from "./components/weekly-rhythm-modal.ts";
 import { FeedbackPanel } from "./components/feedback-panel.ts";
+import { AddTaskPanel } from "./components/add-task-panel.ts";
 
 export class Demo2App {
   private sceneManager: SceneManager;
@@ -59,12 +62,20 @@ export class Demo2App {
   private briefing: DailyBriefing;
   private avatarFrame: AvatarFrame;
   private goalsTasksPanel: GoalsTasksPanel;
+  private journalHost!: HTMLDivElement;
+  private chatHistoryPanel!: HTMLDivElement;
+  private chatHistoryList!: HTMLDivElement;
+  private chatHistoryInner!: HTMLDivElement;
   private journalBar: JournalBar;
+  private chatHistoryOpen = false;
+  private readonly chatEntries: { role: "user" | "assistant"; text: string }[] =
+    [];
   private modalManager: ModalManager;
   private taskCompleteModal: TaskCompleteModal;
   private vaultModal: VaultModal;
   private weeklyRhythmModal: WeeklyRhythmModal;
   private feedbackPanel: FeedbackPanel;
+  private addTaskPanel: AddTaskPanel;
 
   private loginOverlay: HTMLDivElement | null = null;
   /** Covers the app until session is known (avoids a flash of dashboard before welcome/login). */
@@ -74,6 +85,14 @@ export class Demo2App {
   private enteredUsername = "";
   private authProfile: UserProfile | null = null;
   private unsubAuth: (() => void) | null = null;
+  private unsubQuests: (() => void) | null = null;
+  /** True after first successful `onReady` (used to re-sync identity on auth refresh). */
+  private sessionStarted = false;
+
+  /** Supabase Auth `user.id` — source of truth for quest API scoping (kept in sync on `AeloraClient` via `refreshBackendIdentity`). */
+  private get supabaseAuthUserId(): string | undefined {
+    return this.authProfile?.userId;
+  }
   private envMesh: THREE.Mesh | null = null;
   private cleanupFns: (() => void)[] = [];
   private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -100,7 +119,7 @@ export class Demo2App {
   private panelGazeLocked = false;
   private readonly PANEL_IDLE_MS = 1500;
   private static readonly UI_PANEL_SELECTOR =
-    ".lum-briefing, .lum-right, .lum-journal, " +
+    ".lum-briefing, .lum-right, .lum-journal, .lum-chat-history, " +
     ".lum-speech-bubble, .lum-vault-btn, .lum-backdrop, " +
     ".lum-login-overlay, .lum-toast";
 
@@ -122,6 +141,7 @@ export class Demo2App {
       sessionId: config.websocket.sessionId,
       userId: config.websocket.userId,
       username: config.websocket.username,
+      supabaseUserId: config.websocket.supabaseUserId,
     });
     this.feedbackClient = new FeedbackClient(config.api.feedbackUrl);
 
@@ -164,9 +184,30 @@ export class Demo2App {
     this.toastEl.setAttribute("aria-live", "polite");
     container.appendChild(this.toastEl);
 
-    // Bottom: Journal
+    // Bottom: Chat history (collapsible) + Journal
+    this.journalHost = document.createElement("div");
+    this.journalHost.className = "lum-journal-host";
+
+    this.chatHistoryPanel = document.createElement("div");
+    this.chatHistoryPanel.className = "lum-chat-history";
+    this.chatHistoryPanel.setAttribute("role", "region");
+    this.chatHistoryPanel.setAttribute("aria-label", "Chat history");
+    this.chatHistoryPanel.setAttribute("aria-hidden", "true");
+
+    this.chatHistoryInner = document.createElement("div");
+    this.chatHistoryInner.className = "lum-chat-history-inner";
+
+    this.chatHistoryList = document.createElement("div");
+    this.chatHistoryList.className = "lum-chat-history-list";
+
+    this.chatHistoryInner.appendChild(this.chatHistoryList);
+    this.chatHistoryPanel.appendChild(this.chatHistoryInner);
+
     this.journalBar = new JournalBar();
-    container.appendChild(this.journalBar.el);
+    this.journalHost.append(this.chatHistoryPanel, this.journalBar.el);
+    container.appendChild(this.journalHost);
+
+    this.renderChatHistory();
 
     // ── 3D Scene ──
 
@@ -197,6 +238,7 @@ export class Demo2App {
     this.vaultModal = new VaultModal(this.modalManager);
     this.weeklyRhythmModal = new WeeklyRhythmModal(this.modalManager);
     this.feedbackPanel = new FeedbackPanel(this.modalManager);
+    this.addTaskPanel = new AddTaskPanel(this.modalManager);
 
     // ── Wire callbacks ──
 
@@ -242,11 +284,14 @@ export class Demo2App {
     this.unsubAuth = authManager.onAuthStateChange(
       (_event, _session, profile) => {
         if (profile) {
+          const prevUserId = this.authProfile?.userId;
           this.applyAuthProfile(profile);
           this.dismissLogin();
-          // Only call onReady once
-          if (!this.authProfile || this.authProfile.userId !== profile.userId) {
-            this.authProfile = profile;
+          this.authProfile = profile;
+          if (this.sessionStarted) {
+            const userChanged =
+              prevUserId != null && prevUserId !== profile.userId;
+            this.refreshBackendIdentity(profile, { reconnectWs: userChanged });
           }
         }
       },
@@ -376,12 +421,20 @@ export class Demo2App {
   }
 
   private wireCallbacks(): void {
+    this.journalBar.onHistoryToggle = () => this.toggleChatHistory();
+
     // Journal submit → send to LLM
     this.journalBar.onSubmit = (text) => {
-      if (!this.comm.connected || this.isBusy()) return;
+      if (!this.comm.connected || this.isBusy()) return false;
+      this.appendChatEntry("user", text);
       const msg = this.state.wrapMessage(text);
       this.comm.sendMessage(msg);
       this.transitionToThinking();
+      return true;
+    };
+
+    this.journalBar.onVoiceError = (message) => {
+      this.showToast(message);
     };
 
     // Task Start (TOP 3)
@@ -392,6 +445,55 @@ export class Demo2App {
 
     this.goalsTasksPanel.onMaxFavoritesReached = () => {
       this.showToast("You already have max favorite tasks");
+    };
+
+    this.goalsTasksPanel.onSetTaskFavorite = async (taskId, favorite) => {
+      const questId = this.state.getQuestId(taskId);
+      if (!questId) {
+        const t = this.state.getTasks().find((x) => x.id === taskId);
+        if (t) t.isTop3 = favorite;
+        this.goalsTasksPanel.setData(
+          this.state.getGoals(),
+          this.state.getTasks(),
+          this.state.pointsToday,
+          this.state.pointsYesterday,
+        );
+        return true;
+      }
+      if (!this.supabaseAuthUserId) {
+        this.showToast("Sign in to sync favorites");
+        return false;
+      }
+      const ok = await this.aeloraClient.setQuestFavorite(questId, favorite);
+      if (!ok) {
+        this.showToast("Could not update favorites");
+        return false;
+      }
+      await this.refreshQuestTasks();
+      return true;
+    };
+
+    this.goalsTasksPanel.onAddTaskClick = () => {
+      this.addTaskPanel.open();
+    };
+
+    this.addTaskPanel.onSubmit = async (data) => {
+      if (!this.supabaseAuthUserId) {
+        this.showToast("Sign in to add tasks");
+        return false;
+      }
+      const row = await this.aeloraClient.createQuest({
+        title: data.title,
+        description: data.description || undefined,
+        category: data.category || undefined,
+        difficulty: data.difficulty,
+      });
+      if (!row) {
+        this.showToast("Could not create task");
+        return false;
+      }
+      await this.refreshQuestTasks();
+      return true;
     };
 
     // Task Finish (TOP 3) → open completion modal
@@ -408,9 +510,12 @@ export class Demo2App {
       const task = this.state.getTasks().find((t) => t.id === data.taskId);
       const message = this.state.completeTask(data.taskId);
       this.goalsTasksPanel.markTaskComplete(data.taskId);
-      this.reportTaskCompletion(data.taskId);
+      this.reportTaskCompletion(data.taskId, {
+        notes: data.reflection.trim() || undefined,
+      });
       if (task) this.briefing.markDueTodayByTitle(task.title);
       if (message && this.comm.connected) {
+        if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
         this.transitionToThinking();
         this.comm.sendMessage(message);
       }
@@ -425,6 +530,7 @@ export class Demo2App {
       this.reportTaskCompletion(taskId);
       if (task) this.briefing.markDueTodayByTitle(task.title);
       if (message && this.comm.connected) {
+        if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
         this.transitionToThinking();
         this.comm.sendMessage(message);
       }
@@ -513,17 +619,18 @@ export class Demo2App {
 
     // Briefing due-today toggle → update todo via API
     this.briefing.onDueTodayToggle = (itemId, completed) => {
-      // itemId format: "todo-{uid}" from applyTodos, or "due-{n}" from fixture
+      // itemId format: "todo-{uid}" from briefing todos, or "due-{n}" from fixture
       const uid = itemId.startsWith("todo-") ? itemId.slice(5) : null;
       if (uid) {
         this.aeloraClient.updateTodo(uid, { completed }).catch(() => {});
       }
     };
 
-    // Schedule header → open Weekly Rhythm modal
-    this.briefing.onScheduleHeaderClick = () => {
+    const openWeeklyRhythm = () => {
       this.weeklyRhythmModal.open(this.state.getHabits());
     };
+    this.briefing.onScheduleHeaderClick = openWeeklyRhythm;
+    this.goalsTasksPanel.onWeeklyRhythmClick = openWeeklyRhythm;
   }
 
   private setupListeners(): void {
@@ -548,6 +655,25 @@ export class Demo2App {
       this.stateMachine.reset();
     });
 
+    const onHistoryEscape = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || !this.chatHistoryOpen) return;
+      this.chatHistoryOpen = false;
+      this.syncChatHistoryPanel();
+    };
+    document.addEventListener("keydown", onHistoryEscape);
+    this.cleanupFns.push(() =>
+      document.removeEventListener("keydown", onHistoryEscape),
+    );
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      this.briefing.setData(this.state.getBriefing());
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    this.cleanupFns.push(() =>
+      document.removeEventListener("visibilitychange", onVisibilityChange),
+    );
+
     eventBus.on("comm:error", ({ code, message }) => {
       console.error(`[LUMINORA] Server error (${code}): ${message}`);
       this.resetSpeakingState();
@@ -563,8 +689,9 @@ export class Demo2App {
       }
     });
 
-    eventBus.on("comm:textDone", () => {
+    eventBus.on("comm:textDone", ({ text }) => {
       this.textStreamDone = true;
+      this.appendChatEntry("assistant", text);
       this.tryFinishResponse();
       // Sync vault after each LLM response — backend may have stored new facts
       this.syncVault();
@@ -602,6 +729,44 @@ export class Demo2App {
       console.log(
         `[LUMINORA] Mood: ${mood.label} (${mood.emotion}/${mood.intensity})`,
       );
+    });
+
+    // Fallback nudge — Supabase Realtime is the primary task-sync path;
+    // this handles edge cases where the websocket hint arrives first or
+    // the realtime subscription missed a change (e.g. reconnect race).
+    eventBus.on("comm:dataChanged", ({ source, table, action }) => {
+      console.log(
+        `[LUMINORA] Data changed: ${source} ${table ?? ""} ${action ?? ""}`,
+      );
+      if (source === "supabase") {
+        this.refreshQuestTasks();
+      }
+    });
+
+    // TOP 3 timer start — from Aelora `task:start` event
+    eventBus.on("comm:taskStart", ({ questId }) => {
+      const ok = this.goalsTasksPanel.startTop3TimerForQuestId(questId);
+      if (!ok) {
+        console.warn(
+          "[LUMINORA] task:start: no matching TOP 3 task for questId",
+          questId,
+        );
+      }
+    });
+
+    eventBus.on("comm:taskFinish", ({ questId, title }) => {
+      const task = this.state
+        .getTasks()
+        .find((t) => t.id === questId && t.isTop3 && !t.completed);
+      if (!task) {
+        console.warn(
+          "[LUMINORA] task:finish: no matching TOP 3 task for questId",
+          questId,
+        );
+        return;
+      }
+      this.goalsTasksPanel.stopTop3TimerIfForQuest(questId);
+      this.taskCompleteModal.open(questId, title ?? task.title);
     });
 
     // ── Celebrations ──
@@ -689,6 +854,60 @@ export class Demo2App {
     return s === "thinking" || s === "speaking";
   }
 
+  private toggleChatHistory(): void {
+    this.chatHistoryOpen = !this.chatHistoryOpen;
+    this.syncChatHistoryPanel();
+    if (this.chatHistoryOpen) {
+      this.renderChatHistory();
+      requestAnimationFrame(() => {
+        this.chatHistoryInner.scrollTop = this.chatHistoryInner.scrollHeight;
+      });
+    }
+  }
+
+  private syncChatHistoryPanel(): void {
+    this.chatHistoryPanel.classList.toggle(
+      "lum-chat-history--open",
+      this.chatHistoryOpen,
+    );
+    this.chatHistoryPanel.setAttribute(
+      "aria-hidden",
+      this.chatHistoryOpen ? "false" : "true",
+    );
+    this.journalBar.setHistoryOpen(this.chatHistoryOpen);
+  }
+
+  private renderChatHistory(): void {
+    this.chatHistoryList.replaceChildren();
+    if (this.chatEntries.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "lum-chat-history-empty";
+      empty.textContent = "No messages yet. Say hello to Wendy below.";
+      this.chatHistoryList.appendChild(empty);
+      return;
+    }
+    for (const e of this.chatEntries) {
+      const row = document.createElement("div");
+      row.className = `lum-chat-history-row lum-chat-history-row--${e.role}`;
+      const bubble = document.createElement("div");
+      bubble.className = `lum-chat-history-bubble lum-chat-history-bubble--${e.role}`;
+      bubble.textContent = e.text;
+      row.appendChild(bubble);
+      this.chatHistoryList.appendChild(row);
+    }
+  }
+
+  private appendChatEntry(role: "user" | "assistant", text: string): void {
+    const t = text.trim();
+    if (!t) return;
+    this.chatEntries.push({ role, text: t });
+    if (!this.chatHistoryOpen) return;
+    this.renderChatHistory();
+    requestAnimationFrame(() => {
+      this.chatHistoryInner.scrollTop = this.chatHistoryInner.scrollHeight;
+    });
+  }
+
   private showToast(message: string): void {
     if (!this.toastEl) return;
     this.toastEl.textContent = message;
@@ -702,11 +921,21 @@ export class Demo2App {
 
   // ── API: report task completion ──
 
-  private reportTaskCompletion(taskId: string): void {
+  private reportTaskCompletion(
+    taskId: string,
+    opts?: { notes?: string },
+  ): void {
     const task = this.state.getTasks().find((t) => t.id === taskId);
     if (!task) return;
 
-    // Mark todo as completed in Google Tasks
+    const questId = this.state.getQuestId(taskId);
+    if (questId && this.supabaseAuthUserId) {
+      this.aeloraClient
+        .completeQuest(questId, { notes: opts?.notes })
+        .catch(() => {});
+    }
+
+    // Mark todo as completed in Google Tasks (legacy todo-backed tasks)
     const todoUid = this.state.getTodoUid(taskId);
     if (todoUid) {
       this.aeloraClient
@@ -742,23 +971,49 @@ export class Demo2App {
 
   // ── Init ──
 
-  private async onReady(): Promise<void> {
-    console.log("[LUMINORA] Starting...");
-
-    // Derive identity from Supabase auth profile
-    const profile = this.authProfile;
+  /**
+   * Push Supabase Auth `user.id` (and session id) into config, REST client, WS `init`, and quest Realtime.
+   */
+  private refreshBackendIdentity(
+    profile: UserProfile,
+    options?: { reconnectWs?: boolean },
+  ): void {
     const username =
-      profile?.displayName || this.enteredUsername || this.state.username;
-    const userId = profile?.userId || username;
+      profile.displayName || this.enteredUsername || this.state.username;
+    const userId = profile.userId || username;
+    const supabaseUserId = profile.userId;
     const sessionId = `patyna-${userId}`;
 
     this.config.websocket.userId = userId;
     this.config.websocket.username = username;
+    this.config.websocket.supabaseUserId = supabaseUserId;
     this.config.websocket.sessionId = sessionId;
 
-    this.aeloraClient.updateUser(userId, username);
+    this.aeloraClient.updateUser(userId, username, supabaseUserId);
     this.aeloraClient.updateSession(sessionId);
-    this.comm.updateIdentity(userId, username);
+    this.comm.updateIdentity(userId, username, supabaseUserId);
+
+    this.unsubQuests?.();
+    this.unsubQuests = subscribeQuestsForUser(supabaseUserId, () =>
+      this.refreshQuestTasks(),
+    );
+
+    if (options?.reconnectWs && this.comm.connected) {
+      this.comm.disconnect();
+      this.comm.connect();
+    }
+  }
+
+  private async onReady(): Promise<void> {
+    console.log("[LUMINORA] Starting...");
+
+    const profile = this.authProfile;
+    if (!profile) {
+      console.warn("[LUMINORA] onReady without auth profile — skipping connect");
+      return;
+    }
+
+    this.refreshBackendIdentity(profile);
 
     await this.ttsPlayer.init();
 
@@ -774,6 +1029,7 @@ export class Demo2App {
       this.VAULT_SYNC_INTERVAL_MS,
     );
 
+    this.sessionStarted = true;
     this.comm.connect();
   }
 
@@ -811,15 +1067,35 @@ export class Demo2App {
     });
   }
 
+  /** Reload quests from Supabase and refresh the goals/tasks panel (keeps TOP 3). */
+  private async refreshQuestTasks(): Promise<void> {
+    const userId = this.aeloraClient.userId;
+    if (!userId) return;
+    const rows = await fetchQuestsForUser(userId);
+    if (rows === null) return;
+    this.state.applyQuests(rows);
+    this.goalsTasksPanel.setData(
+      this.state.getGoals(),
+      this.state.getTasks(),
+      this.state.pointsToday,
+      this.state.pointsYesterday,
+    );
+  }
+
   /** Fetch calendar, todos, memory, scoring from Aelora APIs and overlay onto state. */
   private async fetchLiveData(): Promise<void> {
     const userId = this.aeloraClient.userId;
 
     const scope = userId ? `user:${userId}` : null;
 
+    const questsPromise = userId
+      ? fetchQuestsForUser(userId)
+      : Promise.resolve(null);
+
     const [
       calendar,
       todos,
+      questsRows,
       scopedFacts,
       memory,
       session,
@@ -828,6 +1104,7 @@ export class Demo2App {
     ] = await Promise.all([
       this.aeloraClient.getCalendarEvents(3).catch(() => null),
       this.aeloraClient.getTodos("pending").catch(() => null),
+      questsPromise,
       scope
         ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
         : null,
@@ -849,9 +1126,19 @@ export class Demo2App {
       updated = true;
     }
 
+    if (questsRows !== null) {
+      this.state.applyQuests(questsRows);
+      console.log(
+        `[LUMINORA] Loaded ${questsRows.length} quest(s) from Supabase`,
+      );
+      updated = true;
+    }
+
     if (todos && todos.length > 0) {
-      this.state.applyTodos(todos);
-      console.log(`[LUMINORA] Loaded ${todos.length} todos`);
+      this.state.applyTodosToBriefing(todos);
+      console.log(
+        `[LUMINORA] Loaded ${todos.length} todos (briefing due today)`,
+      );
       updated = true;
     }
 
@@ -1024,6 +1311,8 @@ export class Demo2App {
     this.dismissAuthGateCover();
     this.unsubAuth?.();
     this.unsubAuth = null;
+    this.unsubQuests?.();
+    this.unsubQuests = null;
     if (this.toastTimer) {
       clearTimeout(this.toastTimer);
       this.toastTimer = null;
@@ -1035,6 +1324,7 @@ export class Demo2App {
     for (const fn of this.cleanupFns) fn();
     this.cleanupFns.length = 0;
 
+    this.journalBar.destroy();
     this.goalsTasksPanel.destroy();
     this.elevenLabs.destroy();
     this.ttsPlayer.destroy();
