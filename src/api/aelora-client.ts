@@ -16,7 +16,7 @@
  * All methods return null on failure (non-blocking, logged).
  */
 
-import type { QuestRow } from '@/quests/quest-types.ts';
+import { DEFAULT_QUEST_TYPE, type QuestRow } from '@/quests/quest-types.ts';
 
 // ── Response types ──
 
@@ -363,8 +363,6 @@ export class AeloraClient {
     description?: string;
     category?: string;
     difficulty?: string;
-    /** Supabase `quests.quest_type` check: daily | milestone | streak (default daily). */
-    quest_type?: string;
     /** When set, sent as `supabaseUserId` in the JSON body (overrides cached client id). */
     supabaseUserId?: string;
   }): Promise<QuestRow | null> {
@@ -376,7 +374,7 @@ export class AeloraClient {
       body: JSON.stringify({
         supabaseUserId: uid,
         ...fields,
-        quest_type: fields.quest_type ?? 'daily',
+        quest_type: DEFAULT_QUEST_TYPE,
       }),
     });
   }

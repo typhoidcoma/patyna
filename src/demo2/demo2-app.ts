@@ -88,6 +88,11 @@ export class Demo2App {
   private unsubQuests: (() => void) | null = null;
   /** True after first successful `onReady` (used to re-sync identity on auth refresh). */
   private sessionStarted = false;
+
+  /** Supabase Auth `user.id` — source of truth for quest API scoping (kept in sync on `AeloraClient` via `refreshBackendIdentity`). */
+  private get supabaseAuthUserId(): string | undefined {
+    return this.authProfile?.userId;
+  }
   private envMesh: THREE.Mesh | null = null;
   private cleanupFns: (() => void)[] = [];
   private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -455,15 +460,11 @@ export class Demo2App {
         );
         return true;
       }
-      if (!this.aeloraClient.supabaseUserId) {
+      if (!this.supabaseAuthUserId) {
         this.showToast("Sign in to sync favorites");
         return false;
       }
-      const ok = await this.aeloraClient.setQuestFavorite(
-        questId,
-        favorite,
-        this.authProfile?.userId,
-      );
+      const ok = await this.aeloraClient.setQuestFavorite(questId, favorite);
       if (!ok) {
         this.showToast("Could not update favorites");
         return false;
@@ -477,7 +478,7 @@ export class Demo2App {
     };
 
     this.addTaskPanel.onSubmit = async (data) => {
-      if (!this.aeloraClient.supabaseUserId) {
+      if (!this.supabaseAuthUserId) {
         this.showToast("Sign in to add tasks");
         return false;
       }
@@ -486,7 +487,6 @@ export class Demo2App {
         description: data.description || undefined,
         category: data.category || undefined,
         difficulty: data.difficulty,
-        supabaseUserId: this.authProfile?.userId,
       });
       if (!row) {
         this.showToast("Could not create task");
@@ -929,12 +929,9 @@ export class Demo2App {
     if (!task) return;
 
     const questId = this.state.getQuestId(taskId);
-    if (questId && this.authProfile?.userId) {
+    if (questId && this.supabaseAuthUserId) {
       this.aeloraClient
-        .completeQuest(questId, {
-          notes: opts?.notes,
-          supabaseUserId: this.authProfile.userId,
-        })
+        .completeQuest(questId, { notes: opts?.notes })
         .catch(() => {});
     }
 
