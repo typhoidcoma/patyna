@@ -357,33 +357,43 @@ export class AeloraClient {
 
   // ── Quests (Aelora-owned mutations — server writes to Supabase) ──
 
-  /** Create a quest via Aelora. Requires a signed-in Supabase user. */
+  /** Create a quest via Aelora. Requires Supabase Auth `user.id` (pass `supabaseUserId` or set via `updateUser`). */
   async createQuest(input: {
     title: string;
     description?: string;
     category?: string;
     difficulty?: string;
+    /** Supabase `quests.quest_type` check: daily | milestone | streak (default daily). */
+    quest_type?: string;
+    /** When set, sent as `supabaseUserId` in the JSON body (overrides cached client id). */
+    supabaseUserId?: string;
   }): Promise<QuestRow | null> {
-    const uid = this._supabaseUserId;
+    const { supabaseUserId: explicitUid, ...fields } = input;
+    const uid = (explicitUid?.trim() || this._supabaseUserId)?.trim();
     if (!uid) return null;
     return this.request<QuestRow>('/api/quests', {
       method: 'POST',
-      body: JSON.stringify({ ...input, supabaseUserId: uid }),
+      body: JSON.stringify({
+        supabaseUserId: uid,
+        ...fields,
+        quest_type: fields.quest_type ?? 'daily',
+      }),
     });
   }
 
-  /** Mark a quest completed via Aelora. Requires a signed-in Supabase user. */
+  /** Mark a quest completed via Aelora. Requires Supabase Auth user id (pass or set via `updateUser`). */
   async completeQuest(
     questId: string,
-    opts?: { notes?: string },
+    opts?: { notes?: string; supabaseUserId?: string },
   ): Promise<boolean> {
-    const uid = this._supabaseUserId;
+    const uid = (opts?.supabaseUserId?.trim() || this._supabaseUserId)?.trim();
     if (!uid) return false;
+    const { notes } = opts ?? {};
     const result = await this.request<{ success: boolean }>(
       `/api/quests/${encodeURIComponent(questId)}/complete`,
       {
         method: 'POST',
-        body: JSON.stringify({ supabaseUserId: uid, notes: opts?.notes }),
+        body: JSON.stringify({ supabaseUserId: uid, notes }),
       },
     );
     return result?.success ?? false;
@@ -393,8 +403,12 @@ export class AeloraClient {
    * Set quest favorite (TOP 3) via Aelora. POST /api/quests/:id/favorite
    * — same path Wendy/quests tool uses; triggers dataChanged + task:top3.
    */
-  async setQuestFavorite(questId: string, isFavorite: boolean): Promise<boolean> {
-    const uid = this._supabaseUserId;
+  async setQuestFavorite(
+    questId: string,
+    isFavorite: boolean,
+    supabaseUserId?: string,
+  ): Promise<boolean> {
+    const uid = (supabaseUserId?.trim() || this._supabaseUserId)?.trim();
     if (!uid) return false;
     const result = await this.request<{ quest: QuestRow }>(
       `/api/quests/${encodeURIComponent(questId)}/favorite`,
@@ -449,7 +463,19 @@ export class AeloraClient {
       });
 
       if (!resp.ok) {
-        console.warn(`[AeloraClient] ${options?.method ?? 'GET'} ${path} → ${resp.status}`);
+        let detail = '';
+        try {
+          const ct = resp.headers.get('content-type') ?? '';
+          if (ct.includes('application/json')) {
+            const body = (await resp.clone().json()) as { error?: string; hint?: string };
+            if (body?.error) detail = ` — ${body.error}${body.hint ? ` (${body.hint})` : ''}`;
+          }
+        } catch {
+          /* ignore parse errors */
+        }
+        console.warn(
+          `[AeloraClient] ${options?.method ?? 'GET'} ${path} → ${resp.status}${detail}`,
+        );
         return null;
       }
 

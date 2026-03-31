@@ -86,6 +86,8 @@ export class Demo2App {
   private authProfile: UserProfile | null = null;
   private unsubAuth: (() => void) | null = null;
   private unsubQuests: (() => void) | null = null;
+  /** True after first successful `onReady` (used to re-sync identity on auth refresh). */
+  private sessionStarted = false;
   private envMesh: THREE.Mesh | null = null;
   private cleanupFns: (() => void)[] = [];
   private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
@@ -134,6 +136,7 @@ export class Demo2App {
       sessionId: config.websocket.sessionId,
       userId: config.websocket.userId,
       username: config.websocket.username,
+      supabaseUserId: config.websocket.supabaseUserId,
     });
     this.feedbackClient = new FeedbackClient(config.api.feedbackUrl);
 
@@ -276,11 +279,14 @@ export class Demo2App {
     this.unsubAuth = authManager.onAuthStateChange(
       (_event, _session, profile) => {
         if (profile) {
+          const prevUserId = this.authProfile?.userId;
           this.applyAuthProfile(profile);
           this.dismissLogin();
-          // Only call onReady once
-          if (!this.authProfile || this.authProfile.userId !== profile.userId) {
-            this.authProfile = profile;
+          this.authProfile = profile;
+          if (this.sessionStarted) {
+            const userChanged =
+              prevUserId != null && prevUserId !== profile.userId;
+            this.refreshBackendIdentity(profile, { reconnectWs: userChanged });
           }
         }
       },
@@ -453,7 +459,11 @@ export class Demo2App {
         this.showToast("Sign in to sync favorites");
         return false;
       }
-      const ok = await this.aeloraClient.setQuestFavorite(questId, favorite);
+      const ok = await this.aeloraClient.setQuestFavorite(
+        questId,
+        favorite,
+        this.authProfile?.userId,
+      );
       if (!ok) {
         this.showToast("Could not update favorites");
         return false;
@@ -476,6 +486,7 @@ export class Demo2App {
         description: data.description || undefined,
         category: data.category || undefined,
         difficulty: data.difficulty,
+        supabaseUserId: this.authProfile?.userId,
       });
       if (!row) {
         this.showToast("Could not create task");
@@ -918,9 +929,12 @@ export class Demo2App {
     if (!task) return;
 
     const questId = this.state.getQuestId(taskId);
-    if (questId && this.aeloraClient.supabaseUserId) {
+    if (questId && this.authProfile?.userId) {
       this.aeloraClient
-        .completeQuest(questId, { notes: opts?.notes })
+        .completeQuest(questId, {
+          notes: opts?.notes,
+          supabaseUserId: this.authProfile.userId,
+        })
         .catch(() => {});
     }
 
@@ -960,15 +974,17 @@ export class Demo2App {
 
   // ── Init ──
 
-  private async onReady(): Promise<void> {
-    console.log("[LUMINORA] Starting...");
-
-    // Derive identity from Supabase auth profile
-    const profile = this.authProfile;
+  /**
+   * Push Supabase Auth `user.id` (and session id) into config, REST client, WS `init`, and quest Realtime.
+   */
+  private refreshBackendIdentity(
+    profile: UserProfile,
+    options?: { reconnectWs?: boolean },
+  ): void {
     const username =
-      profile?.displayName || this.enteredUsername || this.state.username;
-    const userId = profile?.userId || username;
-    const supabaseUserId = profile?.isGuest ? undefined : profile?.userId;
+      profile.displayName || this.enteredUsername || this.state.username;
+    const userId = profile.userId || username;
+    const supabaseUserId = profile.userId;
     const sessionId = `patyna-${userId}`;
 
     this.config.websocket.userId = userId;
@@ -980,6 +996,28 @@ export class Demo2App {
     this.aeloraClient.updateSession(sessionId);
     this.comm.updateIdentity(userId, username, supabaseUserId);
 
+    this.unsubQuests?.();
+    this.unsubQuests = subscribeQuestsForUser(supabaseUserId, () =>
+      this.refreshQuestTasks(),
+    );
+
+    if (options?.reconnectWs && this.comm.connected) {
+      this.comm.disconnect();
+      this.comm.connect();
+    }
+  }
+
+  private async onReady(): Promise<void> {
+    console.log("[LUMINORA] Starting...");
+
+    const profile = this.authProfile;
+    if (!profile) {
+      console.warn("[LUMINORA] onReady without auth profile — skipping connect");
+      return;
+    }
+
+    this.refreshBackendIdentity(profile);
+
     await this.ttsPlayer.init();
 
     // Unmute TTS — ElevenLabsTTS starts muted, sync with NavBar's default (enabled)
@@ -988,20 +1026,13 @@ export class Demo2App {
     // Fetch live API data in parallel (non-blocking — falls back to fixture)
     this.fetchLiveData();
 
-    // Subscribe to Supabase Realtime so quests added from chat appear automatically
-    if (supabaseUserId) {
-      this.unsubQuests?.();
-      this.unsubQuests = subscribeQuestsForUser(supabaseUserId, () =>
-        this.refreshQuestTasks(),
-      );
-    }
-
     // Periodically sync vault facts in background
     this.vaultSyncTimer = setInterval(
       () => this.syncVault(),
       this.VAULT_SYNC_INTERVAL_MS,
     );
 
+    this.sessionStarted = true;
     this.comm.connect();
   }
 
