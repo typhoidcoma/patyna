@@ -371,7 +371,7 @@ export class Demo2State {
       .join(', ');
     const progress = this.getProgress();
 
-    return `[Context] ${dayLabel} ${dateLabel} | Schedule: ${schedule} | Goals: ${goals} | Due today: ${dueToday || 'none'} | Remaining: ${remaining || 'none'} | ${progress.points}/${progress.maxPoints} points`;
+    return `[Context] ${dayLabel} ${dateLabel} | Schedule: ${schedule} | Goals: ${goals} | Due today: ${dueToday || 'none'} | Remaining: ${remaining || 'none'} | ${progress.points}/${progress.maxPoints} points | When the user asks to add a task, use your quest tools to persist it for them. When they ask to pin/favorite/move something to TOP 3, use quest favorite tools (is_favorite). When they start or finish a TOP 3 task session, use start_task / finish_task (or equivalent) so their timer and completion flow stay in sync. Remaining is live synced data, not a static paste.`;
   }
 
   private loadFixture(): void {
