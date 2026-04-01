@@ -29,6 +29,13 @@ import type { MoodData } from "@/types/messages.ts";
 import { authManager, type UserProfile } from "@/auth/auth-manager.ts";
 import { fetchQuestsForUser } from "@/quests/fetch-quests.ts";
 import { subscribeQuestsForUser } from "@/quests/subscribe-quests.ts";
+import { parseAddTaskIntent } from "@/quests/parse-add-task-intent.ts";
+import { parseMoveToTop3Intent } from "@/quests/parse-top3-favorite-intent.ts";
+import {
+  findTop3ActiveQuestTaskByTitleHint,
+  findUncompletedQuestTaskByTitleHint,
+} from "@/quests/match-quest-task-by-title-hint.ts";
+import { resolveTop3TimerIntent } from "@/quests/parse-top3-timer-intent.ts";
 import { luminoraDifficultyToSelect } from "@/quests/map-quest-to-task.ts";
 import {
   defaultQuestCategory,
@@ -48,6 +55,9 @@ import { VaultModal } from "./components/vault-modal.ts";
 import { WeeklyRhythmModal } from "./components/weekly-rhythm-modal.ts";
 import { FeedbackPanel } from "./components/feedback-panel.ts";
 import { AddTaskPanel } from "./components/add-task-panel.ts";
+
+/** Must match `MAX_TOP_FAVORITES` in goals-tasks-panel (star / TOP 3 slots). */
+const TOP_FAVORITES_CAP = 3;
 
 export class Demo2App {
   private sceneManager: SceneManager;
@@ -429,11 +439,112 @@ export class Demo2App {
   private wireCallbacks(): void {
     this.journalBar.onHistoryToggle = () => this.toggleChatHistory();
 
-    // Journal submit → send to LLM
-    this.journalBar.onSubmit = (text) => {
+    // Journal submit → send to LLM (quest create / TOP 3 favorite via REST when phrasing matches)
+    this.journalBar.onSubmit = async (text) => {
       if (!this.comm.connected || this.isBusy()) return false;
       this.appendChatEntry("user", text);
-      const msg = this.state.wrapMessage(text);
+
+      const quickTitle = parseAddTaskIntent(text);
+      let questJustSaved: string | null = null;
+      if (quickTitle) {
+        if (!this.supabaseAuthUserId) {
+          this.showToast("Sign in to add tasks from chat");
+        } else {
+          const row = await this.aeloraClient.createQuest({
+            title: quickTitle,
+            category: defaultQuestCategory(),
+            difficulty: "medium",
+          });
+          if (row) {
+            await this.refreshQuestTasks();
+            questJustSaved = quickTitle;
+          } else {
+            this.showToast("Could not add task");
+          }
+        }
+      }
+
+      const top3Hint = parseMoveToTop3Intent(text);
+      let top3PatynaNote: string | null = null;
+      if (top3Hint) {
+        if (!this.supabaseAuthUserId) {
+          this.showToast("Sign in to sync TOP 3 from chat");
+        } else {
+          const tasks = this.state.getTasks();
+          const match = findUncompletedQuestTaskByTitleHint(
+            tasks,
+            top3Hint,
+            (id) => !!this.state.getQuestId(id),
+          );
+          if (!match) {
+            this.showToast("No matching task — use the exact title from ALL TASKS");
+          } else {
+            const questId = this.state.getQuestId(match.id) ?? match.id;
+            const favCount = tasks.filter((t) => t.isTop3 && !t.completed).length;
+            if (match.isTop3) {
+              top3PatynaNote = `Task "${match.title}" is already in TOP 3 (favorite). Acknowledge briefly.`;
+            } else if (favCount >= TOP_FAVORITES_CAP) {
+              this.showToast("You already have 3 top tasks — un-star one first");
+            } else {
+              const ok = await this.aeloraClient.setQuestFavorite(
+                questId,
+                true,
+              );
+              if (ok) {
+                await this.refreshQuestTasks();
+                top3PatynaNote = `Task "${match.title}" was set as a favorite (TOP 3) via the app API — it should appear in the TOP 3 column. Acknowledge briefly.`;
+              } else {
+                this.showToast("Could not update TOP 3");
+              }
+            }
+          }
+        }
+      }
+
+      const patynaNotes: string[] = [];
+      if (questJustSaved !== null) {
+        patynaNotes.push(
+          `[Patyna: Quest "${questJustSaved}" was saved to this user's Supabase quest list. Acknowledge briefly — it appears in ALL TASKS. Do not say you cannot edit the list.]`,
+        );
+      }
+      if (top3PatynaNote) {
+        patynaNotes.push(`[Patyna: ${top3PatynaNote}]`);
+      }
+
+      const tasksNow = this.state.getTasks();
+      const timerIntent = resolveTop3TimerIntent(text, tasksNow, (id) =>
+        Boolean(this.state.getQuestId(id)),
+      );
+      if (timerIntent) {
+        const timerMatch = findTop3ActiveQuestTaskByTitleHint(
+          tasksNow,
+          timerIntent.hint,
+          (id) => !!this.state.getQuestId(id),
+        );
+        if (!timerMatch) {
+          this.showToast("No matching TOP 3 task — star it first or check the title");
+        } else if (timerIntent.action === "start") {
+          const started =
+            this.goalsTasksPanel.startTop3TimerForQuestId(timerMatch.id);
+          if (started) {
+            patynaNotes.push(
+              `[Patyna: TOP 3 timer started in the app for "${timerMatch.title}" (same as Start). Acknowledge briefly.]`,
+            );
+          } else {
+            this.showToast("Could not start timer for that task");
+          }
+        } else {
+          this.goalsTasksPanel.stopTop3TimerIfForQuest(timerMatch.id);
+          this.openTop3TaskCompleteModal(timerMatch.id);
+          patynaNotes.push(
+            `[Patyna: Timer stopped and the task completion dialog was opened for "${timerMatch.title}". Acknowledge briefly — the user confirms completion there.]`,
+          );
+        }
+      }
+
+      const forModel =
+        patynaNotes.length > 0 ? `${text}\n\n${patynaNotes.join("\n")}` : text;
+      const msg = this.state.wrapMessage(forModel);
       this.comm.sendMessage(msg);
       this.transitionToThinking();
       return true;
@@ -557,10 +668,7 @@ export class Demo2App {
     // Task Finish (TOP 3) → open completion modal
     this.goalsTasksPanel.onTaskFinish = (taskId) => {
       if (this.isBusy()) return;
-      const task = this.state.getTasks().find((t) => t.id === taskId);
-      if (task) {
-        this.taskCompleteModal.open(taskId, task.title);
-      }
+      this.openTop3TaskCompleteModal(taskId);
     };
 
     // Task complete modal done → complete task + send to LLM + API
@@ -753,6 +861,9 @@ export class Demo2App {
       this.tryFinishResponse();
       // Sync vault after each LLM response — backend may have stored new facts
       this.syncVault();
+      // Wendy may create quests via tools during this turn; Realtime / WS hints can
+      // miss (config, event shape). Re-fetch so ALL TASKS stays in sync.
+      void this.refreshQuestTasks();
     });
 
     eventBus.on("audio:ttsStreamStart", () => {
@@ -796,7 +907,7 @@ export class Demo2App {
       console.log(
         `[LUMINORA] Data changed: ${source} ${table ?? ""} ${action ?? ""}`,
       );
-      if (source === "supabase") {
+      if (source === "supabase" || table === "quests") {
         this.refreshQuestTasks();
       }
     });
@@ -964,6 +1075,12 @@ export class Demo2App {
     requestAnimationFrame(() => {
       this.chatHistoryInner.scrollTop = this.chatHistoryInner.scrollHeight;
     });
+  }
+
+  /** TOP 3 "Finish" — opens the same reflection modal as clicking Finish on the card. */
+  private openTop3TaskCompleteModal(taskId: string): void {
+    const task = this.state.getTasks().find((t) => t.id === taskId);
+    if (task) this.taskCompleteModal.open(taskId, task.title);
   }
 
   private showToast(message: string): void {

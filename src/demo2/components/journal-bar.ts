@@ -31,7 +31,8 @@ export class JournalBar {
   private committed = '';
   private interim = '';
 
-  onSubmit?: (text: string) => boolean;
+  /** Return false to keep the input; true to clear. May be async (e.g. pre-send API). */
+  onSubmit?: (text: string) => boolean | Promise<boolean>;
   /** Called when the chat history toggle is pressed. */
   onHistoryToggle?: () => void;
   /** Mic permission / engine failure (show a toast). */
@@ -92,7 +93,7 @@ export class JournalBar {
         return;
       }
       if (this.voiceStopInProgress) return;
-      this.finishSubmit();
+      void this.finishSubmit();
     };
 
     this.input.addEventListener('keydown', (e) => {
@@ -140,7 +141,7 @@ export class JournalBar {
     this.stt.stop(() => {
       this.voiceStopInProgress = false;
       if (this.destroyed) return;
-      this.finishSubmit();
+      void this.finishSubmit();
       this.setMicUi(false);
     });
   }
@@ -181,13 +182,14 @@ export class JournalBar {
     }
   }
 
-  private finishSubmit(): void {
+  private async finishSubmit(): Promise<void> {
     if (this.destroyed) return;
     const merged = [this.committed.trim(), this.interim.trim()].filter(Boolean).join(' ').trim();
     const text = (this.input.value.trim() || merged).trim();
     if (!text) return;
-    const accepted = this.onSubmit?.(text) ?? false;
-    if (accepted) {
+    const result = this.onSubmit?.(text) ?? false;
+    const accepted = await Promise.resolve(result);
+    if (accepted && !this.destroyed) {
       this.input.value = '';
       this.committed = '';
       this.interim = '';
