@@ -844,9 +844,14 @@ button.lum-goals-rhythm-btn:active {
 .lum-top3-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 130px;
+  gap: 4px;
+  min-width: 130px;
+  width: auto;
   justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.lum-top3-edit {
   flex-shrink: 0;
 }
 
@@ -975,9 +980,56 @@ button.lum-goals-rhythm-btn:active {
 
 .lum-all-task-title {
   flex: 1;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.lum-all-task-edit {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition:
+    color 0.15s ease,
+    transform 0.1s ease,
+    background 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lum-all-task-edit:hover {
+  background: rgba(249, 77, 138, 0.08);
+  color: var(--lum-pink-deep);
+}
+
+.lum-all-task-edit:active {
+  transform: scale(0.92);
+}
+
+.lum-all-task-edit-icon {
+  width: 18px;
+  height: 18px;
+  display: block;
+  opacity: 0.55;
+}
+
+.lum-all-task-edit:hover .lum-all-task-edit-icon {
+  opacity: 0.95;
+}
+
+.lum-right--busy .lum-all-task-edit {
+  pointer-events: none;
+  opacity: 0.45;
 }
 
 .lum-all-task-bar {

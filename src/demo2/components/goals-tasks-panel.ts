@@ -22,6 +22,7 @@ export class GoalsTasksPanel {
   onTaskStart?: (taskId: string) => void;
   onTaskFinish?: (taskId: string) => void;
   onAllTaskClick?: (taskId: string) => void;
+  onEditTaskClick?: (taskId: string) => void;
   onMaxFavoritesReached?: () => void;
   /** Opens the add-task overlay (e.g. ModalManager). */
   onAddTaskClick?: () => void;
@@ -243,6 +244,24 @@ export class GoalsTasksPanel {
     return `<svg class="lum-task-star-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>`;
   }
 
+  private editPencilSvg(): string {
+    return `<svg class="lum-all-task-edit-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/></svg>`;
+  }
+
+  private createTaskEditButton(taskId: string, extraClass?: string): HTMLButtonElement {
+    const editBtn = document.createElement('button');
+    editBtn.type = 'button';
+    editBtn.className = ['lum-all-task-edit', extraClass].filter(Boolean).join(' ');
+    editBtn.setAttribute('aria-label', 'Edit task');
+    editBtn.innerHTML = this.editPencilSvg();
+    editBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._busy) return;
+      this.onEditTaskClick?.(taskId);
+    });
+    return editBtn;
+  }
+
   private renderTop3(): void {
     if (!this.top3Container) return;
     this.top3Container.innerHTML = '';
@@ -297,6 +316,8 @@ export class GoalsTasksPanel {
       actions.className = 'lum-top3-actions';
 
       if (!task.completed) {
+        actions.appendChild(this.createTaskEditButton(task.id, 'lum-top3-edit'));
+
         if (this.activeTimerId === task.id) {
           // Timer display
           const timer = document.createElement('span');
@@ -356,6 +377,8 @@ export class GoalsTasksPanel {
       title.className = 'lum-all-task-title';
       title.textContent = task.title;
 
+      const editBtn = this.createTaskEditButton(task.id);
+
       // Difficulty bar — width and color reflect difficulty level
       const bar = document.createElement('div');
       bar.className = 'lum-all-task-bar';
@@ -370,7 +393,7 @@ export class GoalsTasksPanel {
       fill.style.borderRadius = '3px';
       bar.appendChild(fill);
 
-      item.append(starBtn, emoji, title, bar);
+      item.append(starBtn, emoji, title, editBtn, bar);
 
       if (!task.completed) {
         item.addEventListener('click', () => this.onAllTaskClick?.(task.id));

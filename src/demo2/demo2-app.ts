@@ -29,6 +29,12 @@ import type { MoodData } from "@/types/messages.ts";
 import { authManager, type UserProfile } from "@/auth/auth-manager.ts";
 import { fetchQuestsForUser } from "@/quests/fetch-quests.ts";
 import { subscribeQuestsForUser } from "@/quests/subscribe-quests.ts";
+import { luminoraDifficultyToSelect } from "@/quests/map-quest-to-task.ts";
+import {
+  defaultQuestCategory,
+  normalizeQuestCategory,
+} from "@/quests/quest-categories.ts";
+import type { QuestDifficulty } from "@/quests/quest-types.ts";
 
 import { Demo2State } from "./demo2-state.ts";
 import { NavBar } from "./components/nav-bar.ts";
@@ -477,6 +483,20 @@ export class Demo2App {
       this.addTaskPanel.open();
     };
 
+    this.goalsTasksPanel.onEditTaskClick = (taskId) => {
+      const task = this.state.getTasks().find((t) => t.id === taskId);
+      if (!task) return;
+      const category = task.category ?? defaultQuestCategory();
+      const difficulty = luminoraDifficultyToSelect(task.difficulty);
+      this.addTaskPanel.openEdit({
+        taskId,
+        title: task.title,
+        description: task.description?.trim() ?? "",
+        category,
+        difficulty,
+      });
+    };
+
     this.addTaskPanel.onSubmit = async (data) => {
       if (!this.supabaseAuthUserId) {
         this.showToast("Sign in to add tasks");
@@ -490,6 +510,44 @@ export class Demo2App {
       });
       if (!row) {
         this.showToast("Could not create task");
+        return false;
+      }
+      await this.refreshQuestTasks();
+      return true;
+    };
+
+    this.addTaskPanel.onEditSubmit = async (taskId, data) => {
+      const category = normalizeQuestCategory(data.category);
+      const difficulty = data.difficulty as QuestDifficulty;
+      const questId = this.state.getQuestId(taskId);
+      if (!questId) {
+        const ok = this.state.updateTaskContent(taskId, {
+          title: data.title,
+          description: data.description,
+          category,
+          difficulty,
+        });
+        if (!ok) return false;
+        this.goalsTasksPanel.setData(
+          this.state.getGoals(),
+          this.state.getTasks(),
+          this.state.pointsToday,
+          this.state.pointsYesterday,
+        );
+        return true;
+      }
+      if (!this.supabaseAuthUserId) {
+        this.showToast("Sign in to edit tasks");
+        return false;
+      }
+      const row = await this.aeloraClient.updateQuest(questId, {
+        title: data.title,
+        description: data.description || undefined,
+        category: data.category || undefined,
+        difficulty: data.difficulty || undefined,
+      });
+      if (!row) {
+        this.showToast("Could not update task");
         return false;
       }
       await this.refreshQuestTasks();

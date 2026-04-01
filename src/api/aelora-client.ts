@@ -379,6 +379,29 @@ export class AeloraClient {
     });
   }
 
+  /** Update a quest via Aelora. Requires Supabase Auth `user.id`. */
+  async updateQuest(
+    questId: string,
+    input: {
+      title: string;
+      description?: string;
+      category?: string;
+      difficulty?: string;
+      supabaseUserId?: string;
+    },
+  ): Promise<QuestRow | null> {
+    const { supabaseUserId: explicitUid, ...fields } = input;
+    const uid = (explicitUid?.trim() || this._supabaseUserId)?.trim();
+    if (!uid) return null;
+    return this.request<QuestRow>(`/api/quests/${encodeURIComponent(questId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        supabaseUserId: uid,
+        ...fields,
+      }),
+    });
+  }
+
   /** Mark a quest completed via Aelora. Requires Supabase Auth user id (pass or set via `updateUser`). */
   async completeQuest(
     questId: string,

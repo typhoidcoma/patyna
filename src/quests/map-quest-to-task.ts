@@ -41,9 +41,26 @@ function pointsForDifficulty(d: 1 | 2 | 3 | 4 | 5): number {
   return 5;
 }
 
+export function luminoraPointsForDifficulty(d: 1 | 2 | 3 | 4 | 5): number {
+  return pointsForDifficulty(d);
+}
+
+export function luminoraEmojiForCategory(category: QuestCategory): string {
+  return CATEGORY_EMOJI[category];
+}
+
 export function isQuestCompleted(row: QuestRow): boolean {
   if (row.completed_at) return true;
   return row.status === 'completed';
+}
+
+/** Map UI difficulty 1–5 back to quest select values (inverse of parseQuestDifficulty). */
+export function luminoraDifficultyToSelect(
+  d: 1 | 2 | 3 | 4 | 5,
+): QuestDifficulty {
+  if (d <= 2) return 'easy';
+  if (d <= 3) return 'medium';
+  return 'hard';
 }
 
 export function mapQuestToLuminoraTask(row: QuestRow): LuminoraTask {
@@ -61,5 +78,7 @@ export function mapQuestToLuminoraTask(row: QuestRow): LuminoraTask {
     isTop3: row.is_favorite === true,
     timerSeconds: 0,
     timerRunning: false,
+    description: row.description,
+    category: row.category,
   };
 }

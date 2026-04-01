@@ -2,6 +2,8 @@
  * Data types for the LUMINORA demo2 dashboard.
  */
 
+import type { QuestCategory } from '@/quests/quest-types.ts';
+
 export interface LuminoraGoal {
   id: string;
   title: string;
@@ -18,6 +20,9 @@ export interface LuminoraTask {
   isTop3: boolean;
   timerSeconds: number;
   timerRunning: boolean;
+  /** When synced from Supabase quests — used for edit form. */
+  description?: string | null;
+  category?: QuestCategory;
 }
 
 export interface ScheduleEvent {

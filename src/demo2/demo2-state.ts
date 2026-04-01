@@ -16,7 +16,13 @@ import type {
   CalendarEvent, TodoItem, MemoryFact, ScoringStats, LeaderboardTask,
 } from '@/api/aelora-client.ts';
 import type { QuestRow } from '@/quests/quest-types.ts';
-import { mapQuestToLuminoraTask } from '@/quests/map-quest-to-task.ts';
+import {
+  luminoraEmojiForCategory,
+  luminoraPointsForDifficulty,
+  mapQuestToLuminoraTask,
+  parseQuestDifficulty,
+} from '@/quests/map-quest-to-task.ts';
+import type { QuestCategory, QuestDifficulty } from '@/quests/quest-types.ts';
 
 export interface LuminoraProgress {
   completed: number;
@@ -280,6 +286,30 @@ export class Demo2State {
   }
 
   // ── Actions ──
+
+  /**
+   * Update a fixture-backed task (no Supabase quest id). Returns false if task missing.
+   */
+  updateTaskContent(
+    taskId: string,
+    fields: {
+      title: string;
+      description: string;
+      category: QuestCategory;
+      difficulty: QuestDifficulty;
+    },
+  ): boolean {
+    const task = this.fixture.tasks.find(t => t.id === taskId);
+    if (!task) return false;
+    const d = parseQuestDifficulty(fields.difficulty);
+    task.title = fields.title;
+    task.description = fields.description.trim() ? fields.description.trim() : null;
+    task.category = fields.category;
+    task.difficulty = d;
+    task.points = luminoraPointsForDifficulty(d);
+    task.emoji = luminoraEmojiForCategory(fields.category);
+    return true;
+  }
 
   completeTask(taskId: string): string | null {
     const task = this.fixture.tasks.find(t => t.id === taskId);

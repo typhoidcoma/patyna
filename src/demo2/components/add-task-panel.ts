@@ -1,5 +1,5 @@
 /**
- * AddTaskPanel — overlay to create a new quest from the task column.
+ * AddTaskPanel — overlay to create or edit a quest from the task column.
  * The actual write is routed through Aelora; Patyna never writes to
  * Supabase directly for task data.
  */
@@ -17,19 +17,74 @@ export interface AddTaskFormData {
   difficulty: string;
 }
 
+export interface AddTaskEditContext {
+  taskId: string;
+  title: string;
+  description: string;
+  category: string;
+  difficulty: string;
+}
+
 export class AddTaskPanel {
   private modal: ModalManager;
   onSubmit?: (data: AddTaskFormData) => Promise<boolean>;
+  onEditSubmit?: (taskId: string, data: AddTaskFormData) => Promise<boolean>;
 
   constructor(modal: ModalManager) {
     this.modal = modal;
   }
 
   open(): void {
+    this.openForm({
+      mode: 'add',
+      headerTitle: 'Add task',
+      subtitle: 'Create a new quest. It appears in ALL TASKS right away.',
+      closeAria: 'Close add task panel',
+      submitIdle: 'Add task',
+      submitBusy: 'Adding…',
+      initial: {
+        title: '',
+        description: '',
+        category: defaultQuestCategory(),
+        difficulty: 'medium',
+      },
+    });
+  }
+
+  openEdit(ctx: AddTaskEditContext): void {
+    this.openForm({
+      mode: 'edit',
+      taskId: ctx.taskId,
+      headerTitle: 'Edit task',
+      subtitle: 'Update this quest. Changes apply after you save.',
+      closeAria: 'Close edit task panel',
+      submitIdle: 'Save',
+      submitBusy: 'Saving…',
+      initial: {
+        title: ctx.title,
+        description: ctx.description,
+        category: ctx.category,
+        difficulty: ctx.difficulty,
+      },
+    });
+  }
+
+  private openForm(opts: {
+    mode: 'add' | 'edit';
+    taskId?: string;
+    headerTitle: string;
+    subtitle: string;
+    closeAria: string;
+    submitIdle: string;
+    submitBusy: string;
+    initial: AddTaskFormData;
+  }): void {
     const el = document.createElement('div');
     el.className = 'lum-add-task';
 
     let submitting = false;
+    const isEdit = opts.mode === 'edit';
+    const taskId = opts.taskId;
 
     const header = document.createElement('div');
     header.className = 'lum-add-task-header';
@@ -37,17 +92,17 @@ export class AddTaskPanel {
     const titleWrap = document.createElement('div');
     const titleEl = document.createElement('div');
     titleEl.className = 'lum-add-task-title';
-    titleEl.textContent = 'Add task';
+    titleEl.textContent = opts.headerTitle;
 
     const subtitle = document.createElement('div');
     subtitle.className = 'lum-add-task-subtitle';
-    subtitle.textContent = 'Create a new quest. It appears in ALL TASKS right away.';
+    subtitle.textContent = opts.subtitle;
     titleWrap.append(titleEl, subtitle);
 
     const closeBtn = document.createElement('button');
     closeBtn.className = 'lum-add-task-close';
     closeBtn.type = 'button';
-    closeBtn.setAttribute('aria-label', 'Close add task panel');
+    closeBtn.setAttribute('aria-label', opts.closeAria);
     closeBtn.innerHTML = '&times;';
     closeBtn.addEventListener('click', () => {
       if (!submitting) this.modal.close();
@@ -67,6 +122,7 @@ export class AddTaskPanel {
     titleInput.placeholder = 'What do you need to do?';
     titleInput.maxLength = 200;
     titleInput.autocomplete = 'off';
+    titleInput.value = opts.initial.title;
 
     const descLabel = document.createElement('label');
     descLabel.className = 'lum-add-task-label';
@@ -79,6 +135,7 @@ export class AddTaskPanel {
     descInput.placeholder = 'Extra context…';
     descInput.maxLength = 2000;
     descInput.rows = 3;
+    descInput.value = opts.initial.description;
 
     const catLabel = document.createElement('label');
     catLabel.className = 'lum-add-task-label';
@@ -95,7 +152,7 @@ export class AddTaskPanel {
       option.textContent = label;
       catSelect.appendChild(option);
     }
-    catSelect.value = defaultQuestCategory();
+    catSelect.value = opts.initial.category;
 
     const diffLabel = document.createElement('label');
     diffLabel.className = 'lum-add-task-label';
@@ -116,7 +173,7 @@ export class AddTaskPanel {
       option.textContent = label;
       diffSelect.appendChild(option);
     }
-    diffSelect.value = 'medium';
+    diffSelect.value = opts.initial.difficulty;
 
     const actions = document.createElement('div');
     actions.className = 'lum-add-task-actions';
@@ -132,8 +189,8 @@ export class AddTaskPanel {
     const submitBtn = document.createElement('button');
     submitBtn.className = 'lum-add-task-submit';
     submitBtn.type = 'button';
-    submitBtn.textContent = 'Add task';
-    submitBtn.disabled = true;
+    submitBtn.textContent = opts.submitIdle;
+    submitBtn.disabled = titleInput.value.trim().length === 0;
 
     const updateState = () => {
       if (submitting) return;
@@ -144,7 +201,7 @@ export class AddTaskPanel {
       submitting = busy;
       const hasTitle = titleInput.value.trim().length > 0;
       submitBtn.disabled = busy || !hasTitle;
-      submitBtn.textContent = busy ? 'Adding…' : 'Add task';
+      submitBtn.textContent = busy ? opts.submitBusy : opts.submitIdle;
       cancelBtn.disabled = busy;
       titleInput.disabled = busy;
       descInput.disabled = busy;
@@ -167,15 +224,21 @@ export class AddTaskPanel {
         return;
       }
 
+      const data: AddTaskFormData = {
+        title,
+        description: descInput.value.trim(),
+        category: catSelect.value,
+        difficulty: diffSelect.value,
+      };
+
       setSubmitting(true);
 
-      const ok =
-        (await this.onSubmit?.({
-          title,
-          description: descInput.value.trim(),
-          category: catSelect.value,
-          difficulty: diffSelect.value,
-        })) ?? false;
+      let ok = false;
+      if (isEdit && taskId) {
+        ok = (await this.onEditSubmit?.(taskId, data)) ?? false;
+      } else {
+        ok = (await this.onSubmit?.(data)) ?? false;
+      }
 
       if (ok) {
         this.modal.close();
