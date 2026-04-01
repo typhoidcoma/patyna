@@ -1,8 +1,32 @@
 /**
- * NavBar — top bar with "LUMINORA" logo, TTS toggle, user profile, and sign-out dropdown.
+ * NavBar — top bar with "LUMINORA" logo, Wendy speaker mute, user profile, and sign-out dropdown.
  */
 
 import { eventBus } from '@/core/event-bus.ts';
+
+const SPEAKER_MUTED_STORAGE_KEY = 'luminora:speakerMuted';
+
+function readStoredSpeakerMuted(): boolean {
+  try {
+    return localStorage.getItem(SPEAKER_MUTED_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+function persistSpeakerMuted(muted: boolean): void {
+  try {
+    localStorage.setItem(SPEAKER_MUTED_STORAGE_KEY, muted ? '1' : '0');
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+const SPEAKER_ICON_ON =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+
+const SPEAKER_ICON_MUTED =
+  '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" x2="16" y1="9" y2="15"/><line x1="16" x2="22" y1="9" y2="15"/></svg>';
 
 export interface NavProfile {
   displayName: string;
@@ -14,8 +38,9 @@ export class NavBar {
   onFeedbackClick?: () => void;
   onSignOut?: () => void;
 
-  private ttsBtn: HTMLButtonElement;
-  private ttsEnabled = true;
+  private speakerBtn: HTMLButtonElement;
+  /** When true, Wendy’s voice is silenced at the speaker (TTS still runs). */
+  private speakerMuted = readStoredSpeakerMuted();
   private nameEl: HTMLSpanElement;
   private avatarEl: HTMLDivElement;
   private dropdownEl: HTMLDivElement;
@@ -33,14 +58,16 @@ export class NavBar {
     const user = document.createElement('div');
     user.className = 'lum-nav-user';
 
-    this.ttsBtn = document.createElement('button');
-    this.ttsBtn.className = 'lum-nav-tts';
-    this.ttsBtn.title = 'Toggle voice';
-    this.updateTtsIcon();
-    this.ttsBtn.addEventListener('click', () => {
-      this.ttsEnabled = !this.ttsEnabled;
-      this.updateTtsIcon();
-      eventBus.emit('media:ttsToggle', { enabled: this.ttsEnabled });
+    this.speakerBtn = document.createElement('button');
+    this.speakerBtn.type = 'button';
+    this.speakerBtn.className = 'lum-nav-tts';
+    this.speakerBtn.title = "Mute Wendy's voice";
+    this.updateSpeakerIcon();
+    this.speakerBtn.addEventListener('click', () => {
+      this.speakerMuted = !this.speakerMuted;
+      this.updateSpeakerIcon();
+      persistSpeakerMuted(this.speakerMuted);
+      eventBus.emit('media:speakerMute', { muted: this.speakerMuted });
     });
 
     const feedbackBtn = document.createElement('button');
@@ -87,10 +114,18 @@ export class NavBar {
 
     this.dropdownEl.appendChild(signOutBtn);
 
-    user.append(this.ttsBtn, feedbackBtn, this.userBtn, this.dropdownEl);
+    user.append(this.speakerBtn, feedbackBtn, this.userBtn, this.dropdownEl);
     this.el.append(logo, user);
 
     document.addEventListener('click', () => this.hideDropdown());
+  }
+
+  /**
+   * After `TTSPlayer.init()`, re-apply mute so the gain node matches the button
+   * if the user toggled before the audio graph existed.
+   */
+  syncSpeakerMuteToAudio(): void {
+    eventBus.emit('media:speakerMute', { muted: this.speakerMuted });
   }
 
   setUsername(name: string): void {
@@ -134,8 +169,11 @@ export class NavBar {
     this.dropdownEl.classList.remove('lum-nav-dropdown--open');
   }
 
-  private updateTtsIcon(): void {
-    this.ttsBtn.textContent = this.ttsEnabled ? '🔊' : '🔇';
-    this.ttsBtn.classList.toggle('lum-nav-tts--off', !this.ttsEnabled);
+  private updateSpeakerIcon(): void {
+    this.speakerBtn.innerHTML = this.speakerMuted ? SPEAKER_ICON_MUTED : SPEAKER_ICON_ON;
+    this.speakerBtn.title = this.speakerMuted
+      ? "Unmute Wendy's voice"
+      : "Mute Wendy's voice";
+    this.speakerBtn.classList.toggle('lum-nav-tts--off', this.speakerMuted);
   }
 }
