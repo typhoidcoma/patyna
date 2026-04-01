@@ -2,7 +2,7 @@
  * TTS audio player — receives Float32 PCM chunks and plays them
  * through an AudioWorklet with minimal latency.
  *
- * Listens to: audio:chunkReceived (from CommManager)
+ * Listens to: audio:chunkReceived (from CommManager), media:speakerMute
  * Emits:      audio:playbackStart, audio:playbackEnd
  */
 
@@ -13,7 +13,8 @@ export class TTSPlayer {
   private audioManager: AudioManager;
   private workletNode: AudioWorkletNode | null = null;
   private analyser: AnalyserNode | null = null;
-  private analyserData: Uint8Array | null = null;
+  private outputGain: GainNode | null = null;
+  private analyserData: Uint8Array<ArrayBuffer> | null = null;
   private initialized = false;
   private playing = false;
 
@@ -58,10 +59,20 @@ export class TTSPlayer {
     this.analyser = ctx.createAnalyser();
     this.analyser.fftSize = 256;
     this.analyser.smoothingTimeConstant = 0.75;
-    this.analyserData = new Uint8Array(this.analyser.fftSize);
+    this.analyserData = new Uint8Array(new ArrayBuffer(this.analyser.fftSize));
+
+    this.outputGain = ctx.createGain();
+    this.outputGain.gain.value = 1;
 
     this.workletNode.connect(this.analyser);
-    this.analyser.connect(ctx.destination);
+    this.analyser.connect(this.outputGain);
+    this.outputGain.connect(ctx.destination);
+
+    eventBus.on('media:speakerMute', ({ muted }) => {
+      if (this.outputGain) {
+        this.outputGain.gain.value = muted ? 0 : 1;
+      }
+    });
 
     // Listen for incoming audio chunks from the comm layer
     eventBus.on('audio:chunkReceived', ({ data }) => {
@@ -123,8 +134,12 @@ export class TTSPlayer {
     if (this.analyser) {
       this.analyser.disconnect();
       this.analyser = null;
-      this.analyserData = null;
     }
+    if (this.outputGain) {
+      this.outputGain.disconnect();
+      this.outputGain = null;
+    }
+    this.analyserData = null;
     this.initialized = false;
   }
 }

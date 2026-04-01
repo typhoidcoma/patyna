@@ -37,6 +37,8 @@ export interface EventMap {
   'media:micToggle': { enabled: boolean };
   'media:cameraToggle': { enabled: boolean };
   'media:ttsToggle': { enabled: boolean };
+  /** Mute TTS output to speakers only; generation/streaming continues. */
+  'media:speakerMute': { muted: boolean };
 
   // Communication (Aelora)
   'comm:connected': void;

@@ -413,10 +413,15 @@ body {
 .lum-nav-tts {
   background: none;
   border: none;
-  font-size: 1.05rem;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  color: var(--lum-pink-deep);
   cursor: pointer;
-  padding: 4px 6px;
-  border-radius: var(--radius-sm);
   transition:
     background 0.15s ease,
     transform 0.1s ease,
@@ -426,7 +431,7 @@ body {
 }
 
 .lum-nav-tts:hover {
-  background: rgba(0, 0, 0, 0.05);
+  background: rgba(255, 255, 255, 0.6);
 }
 
 .lum-nav-tts:active {
