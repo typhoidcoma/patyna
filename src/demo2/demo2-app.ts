@@ -725,38 +725,24 @@ export class Demo2App {
       const userId = this.aeloraClient.userId;
       const scope = userId ? `user:${userId}` : null;
 
-      Promise.all([
-        scope
-          ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
-          : null,
-        this.aeloraClient.getMemory().catch(() => null),
-        this.aeloraClient.getSession().catch(() => null),
-      ])
-        .then(([scopedFacts, memory, session]) => {
-          // Prefer user-scoped facts from new endpoint
-          if (scopedFacts?.length) {
-            this.state.applyUserFacts(scopedFacts);
+      if (!scope) {
+        console.warn("[LUMINORA] Vault: no userId, showing fixture data");
+        this.vaultModal.open(this.state.getVaultFacts());
+        return;
+      }
+
+      this.aeloraClient
+        .getMemoryByScope(scope)
+        .catch(() => null)
+        .then((facts) => {
+          if (facts?.length) {
+            this.state.applyUserFacts(facts);
             console.log(
-              `[LUMINORA] Vault: ${scopedFacts.length} facts from /api/memory/scope (${scope})`,
-            );
-            // Fallback to all-scope memory
-          } else if (memory && Object.keys(memory).length > 0) {
-            this.state.applyMemoryFacts(memory);
-            console.log(
-              `[LUMINORA] Vault: ${Object.values(memory).flat().length} facts from /api/memory`,
-            );
-            // Then session memories
-          } else if (
-            session?.memories &&
-            Object.keys(session.memories).length > 0
-          ) {
-            this.state.applyMemoryFacts(session.memories);
-            console.log(
-              `[LUMINORA] Vault: ${Object.values(session.memories).flat().length} facts from session`,
+              `[LUMINORA] Vault: ${facts.length} facts from /api/memory/scope (${scope})`,
             );
           } else {
             console.warn(
-              "[LUMINORA] Vault: no facts from any API, showing fixture data",
+              "[LUMINORA] Vault: no facts from user scope, showing fixture data",
             );
           }
         })
@@ -1230,35 +1216,20 @@ export class Demo2App {
   /** Background-sync user facts into the vault (non-blocking). */
   private syncVault(): void {
     const userId = this.aeloraClient.userId;
-    const scope = userId ? `user:${userId}` : null;
+    if (!userId) return;
+    const scope = `user:${userId}`;
 
-    Promise.all([
-      scope
-        ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
-        : null,
-      this.aeloraClient.getMemory().catch(() => null),
-      this.aeloraClient.getSession().catch(() => null),
-    ]).then(([scopedFacts, memory, session]) => {
-      if (scopedFacts?.length) {
-        this.state.applyUserFacts(scopedFacts);
-        console.log(
-          `[LUMINORA] Vault synced: ${scopedFacts.length} facts from /api/memory/scope`,
-        );
-      } else if (memory && Object.keys(memory).length > 0) {
-        this.state.applyMemoryFacts(memory);
-        console.log(
-          `[LUMINORA] Vault synced: ${Object.values(memory).flat().length} facts from /api/memory`,
-        );
-      } else if (
-        session?.memories &&
-        Object.keys(session.memories).length > 0
-      ) {
-        this.state.applyMemoryFacts(session.memories);
-        console.log(
-          `[LUMINORA] Vault synced: ${Object.values(session.memories).flat().length} facts from session`,
-        );
-      }
-    });
+    this.aeloraClient
+      .getMemoryByScope(scope)
+      .catch(() => null)
+      .then((facts) => {
+        if (facts?.length) {
+          this.state.applyUserFacts(facts);
+          console.log(
+            `[LUMINORA] Vault synced: ${facts.length} facts from /api/memory/scope`,
+          );
+        }
+      });
   }
 
   /** Reload quests from Supabase and refresh the goals/tasks panel (keeps TOP 3). */
@@ -1292,8 +1263,6 @@ export class Demo2App {
       todos,
       questsRows,
       scopedFacts,
-      memory,
-      session,
       scoring,
       leaderboard,
     ] = await Promise.all([
@@ -1303,8 +1272,6 @@ export class Demo2App {
       scope
         ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
         : null,
-      this.aeloraClient.getMemory().catch(() => null),
-      this.aeloraClient.getSession().catch(() => null),
       userId
         ? this.aeloraClient.getScoringStats(userId).catch(() => null)
         : null,
@@ -1337,21 +1304,10 @@ export class Demo2App {
       updated = true;
     }
 
-    // Prefer scoped user facts → all-scope memory → session memories
     if (scopedFacts?.length) {
       this.state.applyUserFacts(scopedFacts);
       console.log(
         `[LUMINORA] Loaded ${scopedFacts.length} facts from /api/memory/scope (${scope})`,
-      );
-    } else if (memory && Object.keys(memory).length > 0) {
-      this.state.applyMemoryFacts(memory);
-      console.log(
-        `[LUMINORA] Loaded ${Object.values(memory).flat().length} memory facts from /api/memory`,
-      );
-    } else if (session?.memories && Object.keys(session.memories).length > 0) {
-      this.state.applyMemoryFacts(session.memories);
-      console.log(
-        `[LUMINORA] Loaded ${Object.values(session.memories).flat().length} memory facts from session`,
       );
     }
 
