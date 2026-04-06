@@ -59,6 +59,14 @@ export class ElevenLabsTTS {
       console.log(`[ElevenLabs] TTS ${enabled ? 'enabled' : 'muted'}`);
     });
 
+    // Speaker mute — also block ElevenLabs so no credits are consumed while muted
+    eventBus.on('media:speakerMute', ({ muted }) => {
+      this.muted = muted;
+      if (muted) {
+        this.close();
+      }
+    });
+
     console.log('[ElevenLabs] TTS initialized');
   }
 
