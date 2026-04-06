@@ -1032,6 +1032,48 @@ button.lum-goals-rhythm-btn:active {
   opacity: 0.45;
 }
 
+.lum-all-task-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lum-text-muted, #bbb);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.12s;
+}
+
+.lum-all-task-delete:hover {
+  background: rgba(220, 50, 50, 0.10);
+  color: #d33;
+}
+
+.lum-all-task-delete:active {
+  transform: scale(0.92);
+}
+
+.lum-all-task-delete-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  opacity: 0.45;
+}
+
+.lum-all-task-delete:hover .lum-all-task-delete-icon {
+  opacity: 0.95;
+}
+
+.lum-right--busy .lum-all-task-delete {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
 .lum-all-task-bar {
   width: 52px;
   height: 5px;

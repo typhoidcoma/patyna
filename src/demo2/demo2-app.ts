@@ -594,6 +594,24 @@ export class Demo2App {
       this.addTaskPanel.open();
     };
 
+    this.goalsTasksPanel.onDeleteTaskClick = async (taskId) => {
+      const questId = this.state.getQuestId(taskId);
+      if (!questId) {
+        this.showToast("Only quest-backed tasks can be deleted");
+        return;
+      }
+      if (!this.supabaseAuthUserId) {
+        this.showToast("Sign in to delete tasks");
+        return;
+      }
+      const ok = await this.aeloraClient.deleteQuest(questId);
+      if (!ok) {
+        this.showToast("Could not delete task");
+        return;
+      }
+      await this.refreshQuestTasks();
+    };
+
     this.goalsTasksPanel.onEditTaskClick = (taskId) => {
       const task = this.state.getTasks().find((t) => t.id === taskId);
       if (!task) return;
@@ -1245,7 +1263,7 @@ export class Demo2App {
 
   /** Reload quests from Supabase and refresh the goals/tasks panel (keeps TOP 3). */
   private async refreshQuestTasks(): Promise<void> {
-    const userId = this.aeloraClient.userId;
+    const userId = this.supabaseAuthUserId;
     if (!userId) return;
     const rows = await fetchQuestsForUser(userId);
     if (rows === null) return;
@@ -1261,11 +1279,12 @@ export class Demo2App {
   /** Fetch calendar, todos, memory, scoring from Aelora APIs and overlay onto state. */
   private async fetchLiveData(): Promise<void> {
     const userId = this.aeloraClient.userId;
+    const supabaseUid = this.supabaseAuthUserId;
 
     const scope = userId ? `user:${userId}` : null;
 
-    const questsPromise = userId
-      ? fetchQuestsForUser(userId)
+    const questsPromise = supabaseUid
+      ? fetchQuestsForUser(supabaseUid)
       : Promise.resolve(null);
 
     const [

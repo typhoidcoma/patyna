@@ -357,12 +357,27 @@ export class AeloraClient {
 
   // ── Quests (Aelora-owned mutations — server writes to Supabase) ──
 
+  /** List quests for a user via GET /api/quests. */
+  async getQuests(opts?: {
+    status?: 'active' | 'completed' | 'all';
+    limit?: number;
+    supabaseUserId?: string;
+  }): Promise<QuestRow[] | null> {
+    const uid = (opts?.supabaseUserId?.trim() || this._supabaseUserId)?.trim();
+    if (!uid) return null;
+    const params = [`supabaseUserId=${encodeURIComponent(uid)}`];
+    if (opts?.status) params.push(`status=${encodeURIComponent(opts.status)}`);
+    if (opts?.limit) params.push(`limit=${opts.limit}`);
+    return this.get<QuestRow[]>(`/api/quests?${params.join('&')}`);
+  }
+
   /** Create a quest via Aelora. Requires Supabase Auth `user.id` (pass `supabaseUserId` or set via `updateUser`). */
   async createQuest(input: {
     title: string;
     description?: string;
     category?: string;
     difficulty?: string;
+    quest_type?: string;
     /** When set, sent as `supabaseUserId` in the JSON body (overrides cached client id). */
     supabaseUserId?: string;
   }): Promise<QuestRow | null> {
@@ -373,51 +388,74 @@ export class AeloraClient {
       method: 'POST',
       body: JSON.stringify({
         supabaseUserId: uid,
-        ...fields,
         quest_type: DEFAULT_QUEST_TYPE,
+        ...fields,
       }),
     });
   }
 
-  /** Update a quest via Aelora. Requires Supabase Auth `user.id`. */
+  /** Update a quest via PUT /api/quests/:id. Only provided fields are changed. */
   async updateQuest(
     questId: string,
     input: {
-      title: string;
+      title?: string;
       description?: string;
       category?: string;
       difficulty?: string;
+      quest_type?: string;
+      status?: string;
+      suggested_by?: string;
+      target_value?: number;
+      current_value?: number;
+      is_favorite?: boolean;
       supabaseUserId?: string;
     },
   ): Promise<QuestRow | null> {
     const { supabaseUserId: explicitUid, ...fields } = input;
     const uid = (explicitUid?.trim() || this._supabaseUserId)?.trim();
     if (!uid) return null;
-    return this.request<QuestRow>(`/api/quests/${encodeURIComponent(questId)}`, {
-      method: 'PATCH',
-      body: JSON.stringify({
-        supabaseUserId: uid,
-        ...fields,
-      }),
-    });
+    const result = await this.request<{ quest: QuestRow }>(
+      `/api/quests/${encodeURIComponent(questId)}`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ supabaseUserId: uid, ...fields }),
+      },
+    );
+    return result?.quest ?? null;
+  }
+
+  /** Delete a quest via DELETE /api/quests/:id. */
+  async deleteQuest(
+    questId: string,
+    supabaseUserId?: string,
+  ): Promise<boolean> {
+    const uid = (supabaseUserId?.trim() || this._supabaseUserId)?.trim();
+    if (!uid) return false;
+    const result = await this.request<{ ok: boolean }>(
+      `/api/quests/${encodeURIComponent(questId)}`,
+      {
+        method: 'DELETE',
+        body: JSON.stringify({ supabaseUserId: uid }),
+      },
+    );
+    return result?.ok ?? false;
   }
 
   /** Mark a quest completed via Aelora. Requires Supabase Auth user id (pass or set via `updateUser`). */
   async completeQuest(
     questId: string,
     opts?: { notes?: string; supabaseUserId?: string },
-  ): Promise<boolean> {
+  ): Promise<{ success: boolean; quest?: QuestRow; logInserted?: boolean } | null> {
     const uid = (opts?.supabaseUserId?.trim() || this._supabaseUserId)?.trim();
-    if (!uid) return false;
+    if (!uid) return null;
     const { notes } = opts ?? {};
-    const result = await this.request<{ success: boolean }>(
+    return this.request<{ success: boolean; quest?: QuestRow; logInserted?: boolean }>(
       `/api/quests/${encodeURIComponent(questId)}/complete`,
       {
         method: 'POST',
         body: JSON.stringify({ supabaseUserId: uid, notes }),
       },
     );
-    return result?.success ?? false;
   }
 
   /**

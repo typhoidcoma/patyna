@@ -196,12 +196,14 @@ export class Demo2State {
     );
     if (removedQuestIds.length > 0) {
       const p = this.getProgress();
-      eventBus.emit('demo:taskComplete', {
-        taskId: removedQuestIds[0]!,
-        points: p.points,
-        totalPoints: p.points,
-        maxPoints: p.maxPoints,
-      });
+      for (const questId of removedQuestIds) {
+        eventBus.emit('demo:taskComplete', {
+          taskId: questId,
+          points: p.points,
+          totalPoints: p.points,
+          maxPoints: p.maxPoints,
+        });
+      }
     }
   }
 
@@ -262,15 +264,19 @@ export class Demo2State {
     this.fixture.pointsToday = stats.xp;
   }
 
-  /** Apply leaderboard tasks as TOP 3. */
+  /** Fill empty TOP 3 slots with leaderboard tasks (quest favorites take priority). */
   applyLeaderboard(tasks: LeaderboardTask[]): void {
     if (!tasks.length) return;
 
-    const top3: LuminoraTask[] = tasks.slice(0, 3).map((t, i) => ({
+    const existingTop3 = this.fixture.tasks.filter(t => t.isTop3 && !t.completed);
+    const slotsAvailable = Math.max(0, 3 - existingTop3.length);
+    if (slotsAvailable === 0) return;
+
+    const fillers: LuminoraTask[] = tasks.slice(0, slotsAvailable).map((t, i) => ({
       id: `lb-${t.id}`,
       goalId: '',
       title: t.title,
-      emoji: ['🎯', '⚡', '🔥'][i] ?? '🎯',
+      emoji: ['🎯', '⚡', '🔥'][existingTop3.length + i] ?? '🎯',
       points: t.score,
       difficulty: (t.score >= 10 ? 5 : t.score >= 7 ? 4 : 3) as 1 | 2 | 3 | 4 | 5,
       completed: false,
@@ -279,9 +285,8 @@ export class Demo2State {
       timerRunning: false,
     }));
 
-    // Replace fixture TOP 3 with leaderboard tasks
     const nonTop3 = this.fixture.tasks.filter(t => !t.isTop3);
-    this.fixture.tasks = [...top3, ...nonTop3];
+    this.fixture.tasks = [...existingTop3, ...fillers, ...nonTop3];
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
   }
 

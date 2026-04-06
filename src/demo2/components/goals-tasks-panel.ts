@@ -23,6 +23,7 @@ export class GoalsTasksPanel {
   onTaskFinish?: (taskId: string) => void;
   onAllTaskClick?: (taskId: string) => void;
   onEditTaskClick?: (taskId: string) => void;
+  onDeleteTaskClick?: (taskId: string) => void;
   onMaxFavoritesReached?: () => void;
   /** Opens the add-task overlay (e.g. ModalManager). */
   onAddTaskClick?: () => void;
@@ -248,6 +249,10 @@ export class GoalsTasksPanel {
     return `<svg class="lum-all-task-edit-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1.003 1.003 0 0 0 0-1.42l-2.34-2.34a1.003 1.003 0 0 0-1.42 0l-1.83 1.83 3.75 3.75 1.84-1.82z"/></svg>`;
   }
 
+  private trashSvg(): string {
+    return `<svg class="lum-all-task-delete-icon" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>`;
+  }
+
   private createTaskEditButton(taskId: string, extraClass?: string): HTMLButtonElement {
     const editBtn = document.createElement('button');
     editBtn.type = 'button';
@@ -260,6 +265,20 @@ export class GoalsTasksPanel {
       this.onEditTaskClick?.(taskId);
     });
     return editBtn;
+  }
+
+  private createTaskDeleteButton(taskId: string, extraClass?: string): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = ['lum-all-task-delete', extraClass].filter(Boolean).join(' ');
+    btn.setAttribute('aria-label', 'Delete task');
+    btn.innerHTML = this.trashSvg();
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this._busy) return;
+      this.onDeleteTaskClick?.(taskId);
+    });
+    return btn;
   }
 
   private renderTop3(): void {
@@ -378,6 +397,7 @@ export class GoalsTasksPanel {
       title.textContent = task.title;
 
       const editBtn = this.createTaskEditButton(task.id);
+      const deleteBtn = this.createTaskDeleteButton(task.id);
 
       // Difficulty bar — width and color reflect difficulty level
       const bar = document.createElement('div');
@@ -393,7 +413,7 @@ export class GoalsTasksPanel {
       fill.style.borderRadius = '3px';
       bar.appendChild(fill);
 
-      item.append(starBtn, emoji, title, editBtn, bar);
+      item.append(starBtn, emoji, title, editBtn, deleteBtn, bar);
 
       if (!task.completed) {
         item.addEventListener('click', () => this.onAllTaskClick?.(task.id));
