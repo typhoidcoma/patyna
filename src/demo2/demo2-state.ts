@@ -10,10 +10,10 @@ import { eventBus } from '@/core/event-bus.ts';
 import { getFixture2 } from './demo2-data.ts';
 import type {
   LuminoraFixture, LuminoraGoal, LuminoraTask,
-  DailyBriefing, Habit, VaultFact, ScheduleEvent, DueTodayItem,
+  DailyBriefing, Habit, VaultFact, ScheduleEvent,
 } from './demo2-types.ts';
 import type {
-  CalendarEvent, TodoItem, MemoryFact, ScoringStats, LeaderboardTask,
+  CalendarEvent, MemoryFact, ScoringStats, LeaderboardTask,
 } from '@/api/aelora-client.ts';
 import type { QuestRow } from '@/quests/quest-types.ts';
 import {
@@ -39,7 +39,7 @@ export class Demo2State {
   private _scoringStats: ScoringStats | null = null;
   private _liveTaskMap = new Map<
     string,
-    { todoUid?: string; lifeEventId?: string; questId?: string }
+    { lifeEventId?: string; questId?: string }
   >();
 
   constructor() {
@@ -78,11 +78,6 @@ export class Demo2State {
       points: this.fixture.pointsToday + points,
       maxPoints: this.fixture.pointsToday + this._maxPoints,
     };
-  }
-
-  /** Get the todo UID backing a task (if loaded from API). */
-  getTodoUid(taskId: string): string | undefined {
-    return this._liveTaskMap.get(taskId)?.todoUid;
   }
 
   /** Supabase quest row id when the task row came from `quests` (same as task id). */
@@ -128,22 +123,6 @@ export class Demo2State {
     });
 
     this.fixture.briefing.schedule = scheduleItems;
-  }
-
-  /**
-   * Overlay Google todos onto the briefing due-today list only.
-   * Task list rows come from Supabase `quests` (see applyQuests).
-   */
-  applyTodosToBriefing(todos: TodoItem[]): void {
-    if (!todos.length) return;
-
-    const pending = todos.filter(t => !t.completed);
-    const dueItems: DueTodayItem[] = pending.slice(0, 6).map(t => ({
-      id: `todo-${t.uid}`,
-      title: t.title,
-      completed: t.completed,
-    }));
-    this.fixture.briefing.dueToday = dueItems;
   }
 
   /**

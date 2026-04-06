@@ -787,13 +787,9 @@ export class Demo2App {
       return false;
     };
 
-    // Briefing due-today toggle → update todo via API
-    this.briefing.onDueTodayToggle = (itemId, completed) => {
-      // itemId format: "todo-{uid}" from briefing todos, or "due-{n}" from fixture
-      const uid = itemId.startsWith("todo-") ? itemId.slice(5) : null;
-      if (uid) {
-        this.aeloraClient.updateTodo(uid, { completed }).catch(() => {});
-      }
+    // Briefing due-today toggle
+    this.briefing.onDueTodayToggle = (_itemId, _completed) => {
+      // Due-today items are now fixture-only (todos deprecated)
     };
 
     const openWeeklyRhythm = () => {
@@ -1114,13 +1110,7 @@ export class Demo2App {
         .catch(() => {});
     }
 
-    // Mark todo as completed in Google Tasks (legacy todo-backed tasks)
-    const todoUid = this.state.getTodoUid(taskId);
-    if (todoUid) {
-      this.aeloraClient
-        .updateTodo(todoUid, { completed: true })
-        .catch(() => {});
-    }
+
 
     // Create life event for scoring
     const userId = this.aeloraClient.userId;
@@ -1260,14 +1250,12 @@ export class Demo2App {
 
     const [
       calendar,
-      todos,
       questsRows,
       scopedFacts,
       scoring,
       leaderboard,
     ] = await Promise.all([
       this.aeloraClient.getCalendarEvents(3).catch(() => null),
-      this.aeloraClient.getTodos("pending").catch(() => null),
       questsPromise,
       scope
         ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
@@ -1292,14 +1280,6 @@ export class Demo2App {
       this.state.applyQuests(questsRows);
       console.log(
         `[LUMINORA] Loaded ${questsRows.length} quest(s) from Supabase`,
-      );
-      updated = true;
-    }
-
-    if (todos && todos.length > 0) {
-      this.state.applyTodosToBriefing(todos);
-      console.log(
-        `[LUMINORA] Loaded ${todos.length} todos (briefing due today)`,
       );
       updated = true;
     }
