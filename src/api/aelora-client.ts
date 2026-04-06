@@ -483,8 +483,8 @@ export class AeloraClient {
   }
 
   /** Get upcoming calendar events (unwraps {events: [...]}) */
-  async getCalendarEvents(days = 7): Promise<CalendarEvent[] | null> {
-    const resp = await this.get<CalendarResponse>(`/api/calendar/events?days=${days}`);
+  async getCalendarEvents(daysAhead = 7): Promise<CalendarEvent[] | null> {
+    const resp = await this.get<CalendarResponse>(`/api/calendar/events?daysAhead=${daysAhead}`);
     return resp?.events ?? null;
   }
 

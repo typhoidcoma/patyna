@@ -112,6 +112,7 @@ export class Demo2App {
   private envMesh: THREE.Mesh | null = null;
   private cleanupFns: (() => void)[] = [];
   private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private refreshQuestTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly VAULT_SYNC_INTERVAL_MS = 30_000; // sync every 30s
 
   // Speaking-state tracking (same as DemoApp)
@@ -456,7 +457,7 @@ export class Demo2App {
             difficulty: "medium",
           });
           if (row) {
-            await this.refreshQuestTasks();
+            this.refreshQuestTasks();
             questJustSaved = quickTitle;
           } else {
             this.showToast("Could not add task");
@@ -491,7 +492,7 @@ export class Demo2App {
                 true,
               );
               if (ok) {
-                await this.refreshQuestTasks();
+                this.refreshQuestTasks();
                 top3PatynaNote = `Task "${match.title}" was set as a favorite (TOP 3) via the app API — it should appear in the TOP 3 column. Acknowledge briefly.`;
               } else {
                 this.showToast("Could not update TOP 3");
@@ -586,7 +587,7 @@ export class Demo2App {
         this.showToast("Could not update favorites");
         return false;
       }
-      await this.refreshQuestTasks();
+      this.refreshQuestTasks();
       return true;
     };
 
@@ -609,7 +610,7 @@ export class Demo2App {
         this.showToast("Could not delete task");
         return;
       }
-      await this.refreshQuestTasks();
+      this.refreshQuestTasks();
     };
 
     this.goalsTasksPanel.onEditTaskClick = (taskId) => {
@@ -641,7 +642,7 @@ export class Demo2App {
         this.showToast("Could not create task");
         return false;
       }
-      await this.refreshQuestTasks();
+      this.refreshQuestTasks();
       return true;
     };
 
@@ -679,7 +680,7 @@ export class Demo2App {
         this.showToast("Could not update task");
         return false;
       }
-      await this.refreshQuestTasks();
+      this.refreshQuestTasks();
       return true;
     };
 
@@ -1222,19 +1223,23 @@ export class Demo2App {
       });
   }
 
-  /** Reload quests from Supabase and refresh the goals/tasks panel (keeps TOP 3). */
-  private async refreshQuestTasks(): Promise<void> {
-    const userId = this.supabaseAuthUserId;
-    if (!userId) return;
-    const rows = await fetchQuestsForUser(userId);
-    if (rows === null) return;
-    this.state.applyQuests(rows);
-    this.goalsTasksPanel.setData(
-      this.state.getGoals(),
-      this.state.getTasks(),
-      this.state.pointsToday,
-      this.state.pointsYesterday,
-    );
+  /** Reload quests from Supabase and refresh the goals/tasks panel (debounced 200ms). */
+  private refreshQuestTasks(): void {
+    if (this.refreshQuestTimer) return;
+    this.refreshQuestTimer = setTimeout(async () => {
+      this.refreshQuestTimer = null;
+      const userId = this.supabaseAuthUserId;
+      if (!userId) return;
+      const rows = await fetchQuestsForUser(userId);
+      if (rows === null) return;
+      this.state.applyQuests(rows);
+      this.goalsTasksPanel.setData(
+        this.state.getGoals(),
+        this.state.getTasks(),
+        this.state.pointsToday,
+        this.state.pointsYesterday,
+      );
+    }, 200);
   }
 
   /** Fetch calendar, todos, memory, scoring from Aelora APIs and overlay onto state. */
@@ -1451,6 +1456,10 @@ export class Demo2App {
     if (this.vaultSyncTimer) {
       clearInterval(this.vaultSyncTimer);
       this.vaultSyncTimer = null;
+    }
+    if (this.refreshQuestTimer) {
+      clearTimeout(this.refreshQuestTimer);
+      this.refreshQuestTimer = null;
     }
     for (const fn of this.cleanupFns) fn();
     this.cleanupFns.length = 0;
