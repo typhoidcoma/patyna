@@ -54,20 +54,50 @@ export class AvatarFrame {
     // Wire event bus for LLM responses
     eventBus.on('comm:textDelta', ({ text }) => this.appendResponse(text));
     eventBus.on('comm:textDone', () => this.finalizeResponse());
+
+    // Show thinking indicator when waiting for LLM response
+    eventBus.on('state:change', ({ to }) => {
+      if (to === 'thinking') {
+        this.showThinking();
+      } else if (to === 'idle') {
+        this.hideThinking();
+      }
+    });
   }
 
   private isStreaming = false;
   private rawBuffer = '';
+  private thinkingShown = false;
+
+  private showThinking(): void {
+    if (this.isStreaming) return;
+    if (this.fadeTimer) {
+      clearTimeout(this.fadeTimer);
+      this.fadeTimer = null;
+    }
+    this.thinkingShown = true;
+    this.bubbleText.innerHTML = '<span class="lum-thinking-dots"><span></span><span></span><span></span></span>';
+    this.bubble.classList.add('visible');
+  }
+
+  private hideThinking(): void {
+    if (!this.thinkingShown) return;
+    this.thinkingShown = false;
+    if (!this.isStreaming) {
+      this.clearResponse();
+    }
+  }
 
   private appendResponse(text: string): void {
     if (this.fadeTimer) {
       clearTimeout(this.fadeTimer);
       this.fadeTimer = null;
     }
-    // Clear stale text when a new response starts
+    // Clear stale text / thinking indicator when a new response starts
     if (!this.isStreaming) {
       this.rawBuffer = '';
       this.isStreaming = true;
+      this.thinkingShown = false;
     }
     this.rawBuffer += text;
     this.bubbleText.textContent = AvatarFrame.stripMarkdown(this.rawBuffer);
