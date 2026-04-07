@@ -1248,10 +1248,8 @@ export class Demo2App {
     this.refreshBackendIdentity(profile);
 
     await this.ttsPlayer.init();
+    // Sync speaker mute → TTS player gain + ElevenLabs muted flag (audio off by default)
     this.navBar.syncSpeakerMuteToAudio();
-
-    // Enable ElevenLabs streaming — starts gated until this; nav speaker mute is separate (media:speakerMute)
-    eventBus.emit("media:ttsToggle", { enabled: true });
 
     // Fetch live API data in parallel (non-blocking — falls back to fixture)
     this.fetchLiveData();
