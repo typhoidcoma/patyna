@@ -600,6 +600,10 @@ export class Demo2App {
       this.addTaskPanel.open();
     };
 
+    this.goalsTasksPanel.onViewCompletedClick = () => {
+      this.openCompletedTasksModal();
+    };
+
     this.goalsTasksPanel.onDeleteTaskClick = async (taskId) => {
       const questId = this.state.getQuestId(taskId);
       if (!questId) {
@@ -1113,6 +1117,71 @@ export class Demo2App {
   private openTop3TaskCompleteModal(taskId: string): void {
     const task = this.state.getTasks().find((t) => t.id === taskId);
     if (task) this.taskCompleteModal.open(taskId, task.title);
+  }
+
+  /** Show modal with completed tasks fetched from the backend. */
+  private async openCompletedTasksModal(): Promise<void> {
+    const rows = await this.aeloraClient.getQuests({ status: 'completed', limit: 50 });
+
+    const el = document.createElement('div');
+    el.className = 'lum-completed-modal';
+
+    const header = document.createElement('div');
+    header.className = 'lum-completed-modal-header';
+
+    const title = document.createElement('div');
+    title.className = 'lum-tc-heading';
+    title.textContent = 'Completed tasks';
+
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'lum-vault-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.addEventListener('click', () => this.modalManager.close());
+
+    header.append(title, closeBtn);
+    el.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'lum-completed-modal-list';
+
+    if (!rows || rows.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'lum-completed-modal-empty';
+      empty.textContent = 'No completed tasks yet.';
+      list.appendChild(empty);
+    } else {
+      for (const row of rows) {
+        const item = document.createElement('div');
+        item.className = 'lum-completed-modal-item';
+
+        const check = document.createElement('span');
+        check.className = 'lum-completed-modal-check';
+        check.textContent = '✓';
+
+        const info = document.createElement('div');
+        info.className = 'lum-completed-modal-info';
+
+        const name = document.createElement('div');
+        name.className = 'lum-completed-modal-title';
+        name.textContent = row.title;
+
+        const meta = document.createElement('div');
+        meta.className = 'lum-completed-modal-meta';
+        const parts: string[] = [row.category];
+        if (row.completed_at) {
+          const d = new Date(row.completed_at);
+          parts.push(d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+        }
+        meta.textContent = parts.join(' · ');
+
+        info.append(name, meta);
+        item.append(check, info);
+        list.appendChild(item);
+      }
+    }
+
+    el.appendChild(list);
+    this.modalManager.open(el);
   }
 
 

@@ -25,6 +25,8 @@ export class GoalsTasksPanel {
   onMaxFavoritesReached?: () => void;
   /** Opens the add-task overlay (e.g. ModalManager). */
   onAddTaskClick?: () => void;
+  /** Opens the completed tasks view. */
+  onViewCompletedClick?: () => void;
   /** Butterfly next to GOALS — opens Weekly Rhythm (same as schedule header in briefing). */
   onWeeklyRhythmClick?: () => void;
   /**
@@ -115,6 +117,14 @@ export class GoalsTasksPanel {
     this.allTasksContainer.className = 'lum-all-tasks-list';
     this.renderAllTasks();
     this.el.appendChild(this.allTasksContainer);
+
+    // Completed tasks button
+    const completedBtn = document.createElement('button');
+    completedBtn.type = 'button';
+    completedBtn.className = 'lum-completed-btn';
+    completedBtn.textContent = 'View completed';
+    completedBtn.addEventListener('click', () => this.onViewCompletedClick?.());
+    this.el.appendChild(completedBtn);
   }
 
   markTaskComplete(taskId: string): void {

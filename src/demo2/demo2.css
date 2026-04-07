@@ -1642,6 +1642,92 @@ button.lum-goals-rhythm-btn:active {
   width: auto;
 }
 
+/* ── Completed Tasks Button ── */
+
+.lum-completed-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 8px 0;
+  border: 1px solid var(--lum-border, #e0d6e8);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary, #888);
+  font-family: var(--font-family);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lum-completed-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+}
+
+/* ── Completed Tasks Modal ── */
+
+.lum-completed-modal {
+  padding: 24px 28px;
+  min-width: 360px;
+  max-width: 480px;
+  width: min(480px, calc(100vw - 32px));
+}
+
+.lum-completed-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.lum-completed-modal-list {
+  max-height: 400px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.lum-completed-modal-empty {
+  color: var(--text-secondary, #888);
+  font-size: 0.88rem;
+  text-align: center;
+  padding: 24px 0;
+}
+
+.lum-completed-modal-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.lum-completed-modal-item:last-child {
+  border-bottom: none;
+}
+
+.lum-completed-modal-check {
+  color: var(--lum-green-bar, #4caf50);
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.lum-completed-modal-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.lum-completed-modal-title {
+  font-size: 0.88rem;
+  font-weight: var(--font-weight-medium);
+  color: var(--text-primary);
+}
+
+.lum-completed-modal-meta {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #888);
+  margin-top: 2px;
+}
+
 /* ── Feedback Panel ── */
 
 .lum-feedback {
