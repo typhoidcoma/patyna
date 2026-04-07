@@ -698,7 +698,7 @@ export class Demo2App {
       const task = this.state.getTasks().find((t) => t.id === data.taskId);
 
       // Low rating (1-2 stars): suppress celebration, ask why
-      if (data.rating >= 1 && data.rating <= 2) {
+      if (data.rating >= 1 && data.rating <= 3) {
         this.suppressNextCelebration = true;
       }
 
@@ -709,8 +709,18 @@ export class Demo2App {
       });
       if (task) this.briefing.markDueTodayByTitle(task.title);
 
-      if (data.rating >= 1 && data.rating <= 2) {
-        this.openLowRatingModal(data.taskTitle);
+      if (data.rating >= 1 && data.rating <= 3) {
+        // Let Wendy ask about the low rating in her own voice
+        if (this.comm.connected) {
+          const reflection = data.reflection.trim();
+          const reflNote = reflection ? ` Their note: "${reflection}".` : '';
+          const msg = this.state.wrapMessage(
+            `[Patyna: The user just completed "${data.taskTitle}" but only gave it ${data.rating} out of 5 stars.${reflNote} Ask them gently and specifically what made "${data.taskTitle}" tough — reference the task by name. Be empathetic, curious, brief (1-2 sentences). Do NOT celebrate.]`,
+          );
+          this.appendChatEntry("user", `Completed: "${data.taskTitle}"`);
+          this.transitionToThinking();
+          this.comm.sendMessage(msg);
+        }
         return;
       }
 
@@ -1090,60 +1100,6 @@ export class Demo2App {
     if (task) this.taskCompleteModal.open(taskId, task.title);
   }
 
-  /** Show follow-up modal when user gives a low rating (1-2 stars) on a task. */
-  private openLowRatingModal(taskTitle: string): void {
-    const el = document.createElement("div");
-    el.className = "lum-low-rating";
-
-    const icon = document.createElement("div");
-    icon.className = "lum-tc-icon";
-    icon.textContent = "💬";
-
-    const heading = document.createElement("div");
-    heading.className = "lum-tc-heading";
-    heading.textContent = "What happened?";
-
-    const subtitle = document.createElement("div");
-    subtitle.className = "lum-low-rating-subtitle";
-    subtitle.textContent = `You rated "${taskTitle}" low. Want to share what went wrong?`;
-
-    const textarea = document.createElement("textarea");
-    textarea.className = "lum-tc-textarea";
-    textarea.placeholder = "What made it rough?";
-
-    const actions = document.createElement("div");
-    actions.className = "lum-low-rating-actions";
-
-    const skipBtn = document.createElement("button");
-    skipBtn.className = "lum-low-rating-skip";
-    skipBtn.type = "button";
-    skipBtn.textContent = "Don't want to say";
-    skipBtn.addEventListener("click", () => {
-      this.modalManager.close();
-    });
-
-    const okBtn = document.createElement("button");
-    okBtn.className = "lum-tc-done-btn";
-    okBtn.type = "button";
-    okBtn.textContent = "OK";
-    okBtn.addEventListener("click", () => {
-      const reason = textarea.value.trim();
-      this.modalManager.close();
-      if (reason && this.comm.connected) {
-        const msg = this.state.wrapMessage(
-          `I rated "${taskTitle}" low. Here's why: ${reason}\n\n[Patyna: The user gave this task a low rating and shared why. Respond with empathy — acknowledge their feelings briefly. Do NOT celebrate. Keep response to 1-2 sentences.]`,
-        );
-        this.appendChatEntry("user", reason);
-        this.transitionToThinking();
-        this.comm.sendMessage(msg);
-      }
-    });
-
-    actions.append(skipBtn, okBtn);
-    el.append(icon, heading, subtitle, textarea, actions);
-    this.modalManager.open(el);
-    requestAnimationFrame(() => textarea.focus());
-  }
 
   private showToast(message: string): void {
     if (!this.toastEl) return;
