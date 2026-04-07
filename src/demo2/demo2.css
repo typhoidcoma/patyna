@@ -767,6 +767,25 @@ button.lum-goals-rhythm-btn:active {
   letter-spacing: 0.02em;
 }
 
+.lum-top3-slot-empty.drag-over {
+  border-color: var(--lum-pink);
+  background: rgba(249, 77, 138, 0.08);
+  box-shadow: inset 0 0 12px rgba(249, 77, 138, 0.1);
+}
+
+/* Drag state for ALL TASKS items */
+.lum-all-task-item[draggable] {
+  cursor: grab;
+}
+
+.lum-all-task-item[draggable]:active {
+  cursor: grabbing;
+}
+
+.lum-all-task-item.dragging {
+  opacity: 0.4;
+}
+
 /* Star favorite (TOP 3 + ALL TASKS) */
 .lum-task-star {
   flex-shrink: 0;

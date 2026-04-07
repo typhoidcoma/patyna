@@ -720,19 +720,7 @@ export class Demo2App {
     };
 
     // All task click (non-TOP3) → complete directly + API
-    this.goalsTasksPanel.onAllTaskClick = (taskId) => {
-      if (this.isBusy()) return;
-      const task = this.state.getTasks().find((t) => t.id === taskId);
-      const message = this.state.completeTask(taskId);
-      this.goalsTasksPanel.markTaskComplete(taskId);
-      this.reportTaskCompletion(taskId);
-      if (task) this.briefing.markDueTodayByTitle(task.title);
-      if (message && this.comm.connected) {
-        if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
-        this.transitionToThinking();
-        this.comm.sendMessage(message);
-      }
-    };
+
 
     // Vault button — fetch user-scoped memory facts then open
     this.avatarFrame.onVaultClick = () => {

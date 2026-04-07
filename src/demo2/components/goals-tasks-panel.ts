@@ -292,7 +292,29 @@ export class GoalsTasksPanel {
       if (!task) {
         const empty = document.createElement('div');
         empty.className = 'lum-top3-slot-empty';
-        empty.innerHTML = '<span class="lum-top3-slot-empty-hint">Add from favorites</span>';
+        empty.innerHTML = '<span class="lum-top3-slot-empty-hint">Drag a task here</span>';
+
+        empty.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = 'move';
+          empty.classList.add('drag-over');
+        });
+        empty.addEventListener('dragleave', () => {
+          empty.classList.remove('drag-over');
+        });
+        empty.addEventListener('drop', async (e) => {
+          e.preventDefault();
+          empty.classList.remove('drag-over');
+          const taskId = e.dataTransfer!.getData('text/plain');
+          if (!taskId || this._busy) return;
+          if (this.onSetTaskFavorite) {
+            await this.onSetTaskFavorite(taskId, true);
+          } else {
+            const t = this.tasks.find(x => x.id === taskId);
+            if (t) { t.isTop3 = true; this.renderTop3(); this.renderAllTasks(); }
+          }
+        });
+
         this.top3Container.appendChild(empty);
         continue;
       }
@@ -416,7 +438,15 @@ export class GoalsTasksPanel {
       item.append(starBtn, emoji, title, editBtn, deleteBtn, bar);
 
       if (!task.completed) {
-        item.addEventListener('click', () => this.onAllTaskClick?.(task.id));
+        item.draggable = true;
+        item.addEventListener('dragstart', (e) => {
+          e.dataTransfer!.setData('text/plain', task.id);
+          e.dataTransfer!.effectAllowed = 'move';
+          item.classList.add('dragging');
+        });
+        item.addEventListener('dragend', () => {
+          item.classList.remove('dragging');
+        });
       }
 
       this.allTasksContainer.appendChild(item);
