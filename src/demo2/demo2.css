@@ -842,8 +842,15 @@ button.lum-goals-rhythm-btn:active {
   display: block;
 }
 
+.lum-all-task-star {
+  width: 22px !important;
+  height: 22px !important;
+}
+
 .lum-all-task-star .lum-task-star-icon {
   opacity: 0.4;
+  width: 14px;
+  height: 14px;
 }
 
 .lum-all-task-star:hover .lum-task-star-icon {
@@ -1016,7 +1023,7 @@ button.lum-goals-rhythm-btn:active {
 .lum-all-task-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 4px;
   padding: 7px 4px;
   font-size: 0.78rem;
   color: var(--text-primary);
@@ -1081,8 +1088,8 @@ button.lum-goals-rhythm-btn:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   margin: 0;
   border: none;
@@ -1107,8 +1114,8 @@ button.lum-goals-rhythm-btn:active {
 }
 
 .lum-all-task-edit-icon {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   display: block;
   opacity: 0.55;
 }
@@ -1127,8 +1134,8 @@ button.lum-goals-rhythm-btn:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 22px;
+  height: 22px;
   padding: 0;
   margin: 0;
   border: none;
@@ -1149,8 +1156,8 @@ button.lum-goals-rhythm-btn:active {
 }
 
 .lum-all-task-delete-icon {
-  width: 16px;
-  height: 16px;
+  width: 12px;
+  height: 12px;
   display: block;
   opacity: 0.45;
 }
@@ -1165,7 +1172,7 @@ button.lum-goals-rhythm-btn:active {
 }
 
 .lum-all-task-bar {
-  width: 52px;
+  width: 32px;
   height: 5px;
   border-radius: 3px;
   overflow: hidden;
