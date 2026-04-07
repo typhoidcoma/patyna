@@ -349,19 +349,63 @@ export class Demo2State {
       .filter(d => !d.completed)
       .map(d => d.title)
       .join(', ');
-    const remaining = this.fixture.tasks
-      .filter(t => !t.completed)
-      .map(t => `${t.title} (${t.points}pts)`)
-      .join(', ');
-    const progress = this.getProgress();
 
-    return `[Context] ${dayLabel} ${dateLabel} | Schedule: ${schedule} | Goals: ${goals} | Due today: ${dueToday || 'none'} | Remaining: ${remaining || 'none'} | ${progress.points}/${progress.maxPoints} points | When the user asks to add a task, use your quest tools to persist it for them. When they ask to pin/favorite/move something to TOP 3, use quest favorite tools (is_favorite). When they start or finish a TOP 3 task session, use start_task / finish_task (or equivalent) so their timer and completion flow stay in sync. Remaining is live synced data, not a static paste.`;
+    const top3 = this.fixture.tasks.filter(t => t.isTop3 && !t.completed);
+    const allTasks = this.fixture.tasks.filter(t => !t.isTop3 && !t.completed);
+    const completed = this.fixture.tasks.filter(t => t.completed);
+
+    const formatTask = (t: LuminoraTask, prefix = '-'): string => {
+      const diff = diffLabel(t.difficulty);
+      const cat = t.category ?? 'productivity';
+      const desc = t.description?.trim() ? ` — "${t.description.trim()}"` : '';
+      const timer = t.timerRunning ? ` [timer: ${fmtTimer(t.timerSeconds)} running]` : '';
+      return `${prefix} ${t.title} — ${cat}, ${diff}${desc}${timer}`;
+    };
+
+    const top3Lines: string[] = [];
+    for (let i = 0; i < 3; i++) {
+      top3Lines.push(top3[i] ? formatTask(top3[i]!, `${i + 1}.`) : `${i + 1}. (empty slot)`);
+    }
+
+    const allLines = allTasks.map(t => formatTask(t));
+    const doneLines = completed.map(t => `✓ ${t.title}`);
+
+    const sections = [
+      `[Context] ${dayLabel} ${dateLabel}`,
+      `Schedule: ${schedule || 'none'}`,
+      `Goals: ${goals || 'none'}`,
+      '',
+      'TOP 3:',
+      ...top3Lines,
+      '',
+      allLines.length ? `ALL TASKS:\n${allLines.join('\n')}` : 'ALL TASKS: none',
+      '',
+      doneLines.length ? `COMPLETED: ${doneLines.join(', ')}` : 'COMPLETED: none',
+      '',
+      `Due today: ${dueToday || 'none'}`,
+      '',
+      'When the user asks to add a task, use your quest tools. When they pin/favorite, use quest favorite tools. When they start or finish a TOP 3 task, use start_task/finish_task. All task data above is live synced.',
+    ];
+
+    return sections.join('\n');
   }
 
   private loadFixture(): void {
     this.fixture = getFixture2();
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
   }
+}
+
+function diffLabel(d: number): string {
+  if (d <= 2) return 'easy';
+  if (d <= 3) return 'medium';
+  return 'hard';
+}
+
+function fmtTimer(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 /** User's local weekday, uppercased to match the briefing pill style. */
