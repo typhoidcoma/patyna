@@ -185,8 +185,6 @@ export class Demo2App {
     this.goalsTasksPanel.setData(
       this.state.getGoals(),
       this.state.getTasks(),
-      this.state.pointsToday,
-      this.state.pointsYesterday,
     );
 
     dashboard.append(
@@ -574,8 +572,6 @@ export class Demo2App {
         this.goalsTasksPanel.setData(
           this.state.getGoals(),
           this.state.getTasks(),
-          this.state.pointsToday,
-          this.state.pointsYesterday,
         );
         return true;
       }
@@ -662,8 +658,6 @@ export class Demo2App {
         this.goalsTasksPanel.setData(
           this.state.getGoals(),
           this.state.getTasks(),
-          this.state.pointsToday,
-          this.state.pointsYesterday,
         );
         return true;
       }
@@ -943,9 +937,6 @@ export class Demo2App {
     // ── Celebrations ──
 
     eventBus.on("demo:taskComplete", ({ totalPoints, maxPoints }) => {
-      // Always update points first
-      this.goalsTasksPanel.updatePoints(totalPoints);
-
       // Skip celebration if 1-star rating
       if (this.suppressNextCelebration) {
         this.suppressNextCelebration = false;
@@ -1296,8 +1287,6 @@ export class Demo2App {
       this.goalsTasksPanel.setData(
         this.state.getGoals(),
         this.state.getTasks(),
-        this.state.pointsToday,
-        this.state.pointsYesterday,
       );
     }, 200);
   }
@@ -1376,8 +1365,6 @@ export class Demo2App {
       this.goalsTasksPanel.setData(
         this.state.getGoals(),
         this.state.getTasks(),
-        this.state.pointsToday,
-        this.state.pointsYesterday,
       );
     }
   }

@@ -11,8 +11,6 @@ export class GoalsTasksPanel {
   readonly el: HTMLDivElement;
   private top3Container!: HTMLDivElement;
   private allTasksContainer!: HTMLDivElement;
-  private pointsDisplay!: HTMLSpanElement;
-  private pointsYdayDisplay!: HTMLSpanElement;
 
   private tasks: LuminoraTask[] = [];
   private activeTimerId: string | null = null;
@@ -40,7 +38,7 @@ export class GoalsTasksPanel {
     this.el.className = 'lum-right';
   }
 
-  setData(goals: LuminoraGoal[], tasks: LuminoraTask[], pointsToday: number, pointsYesterday: number): void {
+  setData(goals: LuminoraGoal[], tasks: LuminoraTask[]): void {
     this.tasks = tasks;
     this.el.innerHTML = '';
 
@@ -96,35 +94,6 @@ export class GoalsTasksPanel {
     tasksTitleRow.append(tasksLabel, addTaskBtn);
     this.el.appendChild(tasksTitleRow);
 
-    const pointsRow = document.createElement('div');
-    pointsRow.className = 'lum-tasks-header';
-
-    this.pointsDisplay = document.createElement('span');
-    this.pointsDisplay.className = 'lum-points-today';
-    this.pointsDisplay.textContent = String(pointsToday);
-
-    const ptsUnit = document.createElement('span');
-    ptsUnit.className = 'lum-points-unit';
-    ptsUnit.textContent = 'pts today';
-
-    this.pointsYdayDisplay = document.createElement('span');
-    this.pointsYdayDisplay.className = 'lum-points-yday';
-    this.pointsYdayDisplay.textContent = `yday ${pointsYesterday}`;
-
-    // Mini bar chart
-    const minibar = document.createElement('div');
-    minibar.className = 'lum-points-minibar';
-    const heights = [40, 60, 80, 50, 70, 90, 45];
-    for (const h of heights) {
-      const seg = document.createElement('div');
-      seg.className = 'lum-minibar-segment';
-      seg.style.height = `${(h / 100) * 16}px`;
-      minibar.appendChild(seg);
-    }
-
-    pointsRow.append(this.pointsDisplay, ptsUnit, this.pointsYdayDisplay, minibar);
-    this.el.appendChild(pointsRow);
-
     // TOP 3
     const top3Label = document.createElement('div');
     top3Label.className = 'lum-top3-label';
@@ -146,12 +115,6 @@ export class GoalsTasksPanel {
     this.allTasksContainer.className = 'lum-all-tasks-list';
     this.renderAllTasks();
     this.el.appendChild(this.allTasksContainer);
-  }
-
-  updatePoints(points: number): void {
-    if (this.pointsDisplay) {
-      this.pointsDisplay.textContent = String(points);
-    }
   }
 
   markTaskComplete(taskId: string): void {
