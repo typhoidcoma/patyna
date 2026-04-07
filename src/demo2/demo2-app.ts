@@ -565,26 +565,34 @@ export class Demo2App {
     };
 
     this.goalsTasksPanel.onSetTaskFavorite = async (taskId, favorite) => {
+      // Optimistic UI update — move task immediately, sync API in background
+      const t = this.state.getTasks().find((x) => x.id === taskId);
+      if (t) t.isTop3 = favorite;
+      this.goalsTasksPanel.setData(
+        this.state.getGoals(),
+        this.state.getTasks(),
+      );
+
       const questId = this.state.getQuestId(taskId);
-      if (!questId) {
-        const t = this.state.getTasks().find((x) => x.id === taskId);
-        if (t) t.isTop3 = favorite;
-        this.goalsTasksPanel.setData(
-          this.state.getGoals(),
-          this.state.getTasks(),
-        );
-        return true;
-      }
+      if (!questId) return true;
       if (!this.supabaseAuthUserId) {
         this.showToast("Sign in to sync favorites");
-        return false;
+        return true;
       }
-      const ok = await this.aeloraClient.setQuestFavorite(questId, favorite);
-      if (!ok) {
-        this.showToast("Could not update favorites");
-        return false;
-      }
-      this.refreshQuestTasks();
+      // Fire API call in background — don't block the UI
+      this.aeloraClient.setQuestFavorite(questId, favorite).then((ok) => {
+        if (!ok) {
+          this.showToast("Could not sync favorite");
+          // Revert on failure
+          if (t) t.isTop3 = !favorite;
+          this.goalsTasksPanel.setData(
+            this.state.getGoals(),
+            this.state.getTasks(),
+          );
+        } else {
+          this.refreshQuestTasks();
+        }
+      });
       return true;
     };
 

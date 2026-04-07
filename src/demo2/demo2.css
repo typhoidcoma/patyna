@@ -746,6 +746,20 @@ button.lum-goals-rhythm-btn:active {
   transition: opacity 0.3s ease;
 }
 
+.lum-top3-card[draggable] {
+  cursor: grab;
+}
+
+.lum-top3-card.dragging {
+  opacity: 0.4;
+}
+
+.lum-top3-card.drag-over {
+  border-bottom: 2px solid var(--lum-pink);
+  background: rgba(249, 77, 138, 0.05);
+  border-radius: 6px;
+}
+
 .lum-top3-list > :last-child {
   border-bottom: none;
 }

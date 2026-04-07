@@ -153,6 +153,29 @@ export class GoalsTasksPanel {
     return this.tasks.filter(t => t.isTop3).length;
   }
 
+  /** Swap two tasks in the tasks array to reorder TOP 3. */
+  private swapTop3(fromId: string, toId: string): void {
+    const fromIdx = this.tasks.findIndex(t => t.id === fromId);
+    const toIdx = this.tasks.findIndex(t => t.id === toId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    // If dragging from ALL TASKS into a TOP 3 slot, promote it
+    const fromTask = this.tasks[fromIdx]!;
+    if (!fromTask.isTop3) {
+      fromTask.isTop3 = true;
+      // Move it to the target position
+      this.tasks.splice(fromIdx, 1);
+      this.tasks.splice(toIdx, 0, fromTask);
+      this.onSetTaskFavorite?.(fromId, true);
+    } else {
+      // Swap positions
+      [this.tasks[fromIdx], this.tasks[toIdx]] = [this.tasks[toIdx]!, this.tasks[fromIdx]!];
+    }
+
+    this.renderTop3();
+    this.renderAllTasks();
+  }
+
   /** Star toggle for TOP 3 (favorited) — checked, click to remove from favorites. */
   private createTop3StarButton(task: LuminoraTask): HTMLButtonElement {
     const btn = document.createElement('button');
@@ -285,6 +308,34 @@ export class GoalsTasksPanel {
       const card = document.createElement('div');
       card.className = 'lum-top3-card';
       if (task.completed) card.classList.add('completed');
+
+      // Make TOP 3 cards draggable for reordering
+      if (!task.completed) {
+        card.draggable = true;
+        card.addEventListener('dragstart', (e) => {
+          e.dataTransfer!.setData('text/plain', task.id);
+          e.dataTransfer!.effectAllowed = 'move';
+          card.classList.add('dragging');
+        });
+        card.addEventListener('dragend', () => {
+          card.classList.remove('dragging');
+        });
+        card.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          e.dataTransfer!.dropEffect = 'move';
+          card.classList.add('drag-over');
+        });
+        card.addEventListener('dragleave', () => {
+          card.classList.remove('drag-over');
+        });
+        card.addEventListener('drop', (e) => {
+          e.preventDefault();
+          card.classList.remove('drag-over');
+          const fromId = e.dataTransfer!.getData('text/plain');
+          if (!fromId || fromId === task.id || this._busy) return;
+          this.swapTop3(fromId, task.id);
+        });
+      }
 
       const starBtn = this.createTop3StarButton(task);
       card.appendChild(starBtn);
