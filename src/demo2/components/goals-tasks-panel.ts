@@ -347,6 +347,8 @@ export class GoalsTasksPanel {
       title.className = 'lum-top3-title';
       title.textContent = task.title;
 
+      card.title = this.taskTooltip(task);
+
       // Difficulty bar — color shifts green→yellow→red as difficulty increases
       const bar = document.createElement('div');
       bar.className = 'lum-top3-bar';
@@ -412,6 +414,14 @@ export class GoalsTasksPanel {
     }
   }
 
+  private taskTooltip(task: LuminoraTask): string {
+    const diff = task.difficulty <= 2 ? 'Easy' : task.difficulty <= 3 ? 'Medium' : 'Hard';
+    const cat = task.category ?? 'productivity';
+    const lines = [task.title, `${cat} · ${diff}`];
+    if (task.description?.trim()) lines.push(task.description.trim());
+    return lines.join('\n');
+  }
+
   private renderAllTasks(): void {
     if (!this.allTasksContainer) return;
     this.allTasksContainer.innerHTML = '';
@@ -431,6 +441,8 @@ export class GoalsTasksPanel {
       const title = document.createElement('span');
       title.className = 'lum-all-task-title';
       title.textContent = task.title;
+
+      item.title = this.taskTooltip(task);
 
       const editBtn = this.createTaskEditButton(task.id);
       const deleteBtn = this.createTaskDeleteButton(task.id);

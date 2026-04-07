@@ -482,12 +482,15 @@ body {
   justify-content: center;
   min-height: 0;
   position: relative;
+  overflow: hidden;
 }
 
 .lum-avatar-ring {
   position: relative;
-  width: min(380px, 50vh);
-  height: min(380px, 50vh);
+  /* Fill as much of the center column as possible, stay circular */
+  width: min(100%, 65vh);
+  aspect-ratio: 1;
+  max-height: 80%;
   border-radius: 50%;
   background: radial-gradient(
     circle,
@@ -498,7 +501,7 @@ body {
     0 0 60px rgba(249, 77, 138, 0.12),
     inset 0 0 40px rgba(255, 255, 255, 0.5);
   overflow: hidden;
-  flex-shrink: 0;
+  flex-shrink: 1;
 }
 
 .lum-avatar-ring .scene-wrap {
@@ -2613,8 +2616,7 @@ button.lum-goals-rhythm-btn:active {
   }
 
   .lum-avatar-ring {
-    width: min(320px, 44vh);
-    height: min(320px, 44vh);
+    width: min(100%, 55vh);
   }
 }
 
@@ -2638,8 +2640,7 @@ button.lum-goals-rhythm-btn:active {
   }
 
   .lum-avatar-ring {
-    width: min(280px, 40vh);
-    height: min(280px, 40vh);
+    width: min(100%, 40vh);
   }
 
   .lum-nav-user {
