@@ -689,8 +689,8 @@ export class Demo2App {
     this.taskCompleteModal.onDone = (data) => {
       const task = this.state.getTasks().find((t) => t.id === data.taskId);
 
-      // 1-star rating: suppress celebration, ask why
-      if (data.rating === 1) {
+      // Low rating (1-2 stars): suppress celebration, ask why
+      if (data.rating >= 1 && data.rating <= 2) {
         this.suppressNextCelebration = true;
       }
 
@@ -701,7 +701,7 @@ export class Demo2App {
       });
       if (task) this.briefing.markDueTodayByTitle(task.title);
 
-      if (data.rating === 1) {
+      if (data.rating >= 1 && data.rating <= 2) {
         this.openLowRatingModal(data.taskTitle);
         return;
       }
@@ -937,7 +937,7 @@ export class Demo2App {
     // ── Celebrations ──
 
     eventBus.on("demo:taskComplete", ({ totalPoints, maxPoints }) => {
-      // Skip celebration if 1-star rating
+      // Skip celebration if low rating (1-2 stars)
       if (this.suppressNextCelebration) {
         this.suppressNextCelebration = false;
         return;
@@ -1082,7 +1082,7 @@ export class Demo2App {
     if (task) this.taskCompleteModal.open(taskId, task.title);
   }
 
-  /** Show follow-up modal when user gives 1-star rating on a task. */
+  /** Show follow-up modal when user gives a low rating (1-2 stars) on a task. */
   private openLowRatingModal(taskTitle: string): void {
     const el = document.createElement("div");
     el.className = "lum-low-rating";
@@ -1097,7 +1097,7 @@ export class Demo2App {
 
     const subtitle = document.createElement("div");
     subtitle.className = "lum-low-rating-subtitle";
-    subtitle.textContent = `You gave "${taskTitle}" one star. Want to share what went wrong?`;
+    subtitle.textContent = `You rated "${taskTitle}" low. Want to share what went wrong?`;
 
     const textarea = document.createElement("textarea");
     textarea.className = "lum-tc-textarea";
@@ -1123,7 +1123,7 @@ export class Demo2App {
       this.modalManager.close();
       if (reason && this.comm.connected) {
         const msg = this.state.wrapMessage(
-          `I gave "${taskTitle}" one star. Here's why: ${reason}\n\n[Patyna: The user rated this task 1 star and shared why. Respond with empathy — acknowledge their feelings briefly. Do NOT celebrate. Keep response to 1-2 sentences.]`,
+          `I rated "${taskTitle}" low. Here's why: ${reason}\n\n[Patyna: The user gave this task a low rating and shared why. Respond with empathy — acknowledge their feelings briefly. Do NOT celebrate. Keep response to 1-2 sentences.]`,
         );
         this.appendChatEntry("user", reason);
         this.transitionToThinking();
