@@ -113,6 +113,7 @@ export class Demo2App {
   private cleanupFns: (() => void)[] = [];
   private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
   private refreshQuestTimer: ReturnType<typeof setTimeout> | null = null;
+  private suppressNextCelebration = false;
   private readonly VAULT_SYNC_INTERVAL_MS = 30_000; // sync every 30s
 
   // Speaking-state tracking (same as DemoApp)
@@ -693,12 +694,24 @@ export class Demo2App {
     // Task complete modal done → complete task + send to LLM + API
     this.taskCompleteModal.onDone = (data) => {
       const task = this.state.getTasks().find((t) => t.id === data.taskId);
+
+      // 1-star rating: suppress celebration, ask why
+      if (data.rating === 1) {
+        this.suppressNextCelebration = true;
+      }
+
       const message = this.state.completeTask(data.taskId);
       this.goalsTasksPanel.markTaskComplete(data.taskId);
       this.reportTaskCompletion(data.taskId, {
         notes: data.reflection.trim() || undefined,
       });
       if (task) this.briefing.markDueTodayByTitle(task.title);
+
+      if (data.rating === 1) {
+        this.openLowRatingModal(data.taskTitle);
+        return;
+      }
+
       if (message && this.comm.connected) {
         if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
         this.transitionToThinking();
@@ -945,6 +958,12 @@ export class Demo2App {
       // Always update points first
       this.goalsTasksPanel.updatePoints(totalPoints);
 
+      // Skip celebration if 1-star rating
+      if (this.suppressNextCelebration) {
+        this.suppressNextCelebration = false;
+        return;
+      }
+
       // Celebration effects (non-blocking)
       try {
         const allDone = totalPoints === maxPoints;
@@ -1082,6 +1101,61 @@ export class Demo2App {
   private openTop3TaskCompleteModal(taskId: string): void {
     const task = this.state.getTasks().find((t) => t.id === taskId);
     if (task) this.taskCompleteModal.open(taskId, task.title);
+  }
+
+  /** Show follow-up modal when user gives 1-star rating on a task. */
+  private openLowRatingModal(taskTitle: string): void {
+    const el = document.createElement("div");
+    el.className = "lum-low-rating";
+
+    const icon = document.createElement("div");
+    icon.className = "lum-tc-icon";
+    icon.textContent = "💬";
+
+    const heading = document.createElement("div");
+    heading.className = "lum-tc-heading";
+    heading.textContent = "What happened?";
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "lum-low-rating-subtitle";
+    subtitle.textContent = `You gave "${taskTitle}" one star. Want to share what went wrong?`;
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "lum-tc-textarea";
+    textarea.placeholder = "What made it rough?";
+
+    const actions = document.createElement("div");
+    actions.className = "lum-low-rating-actions";
+
+    const skipBtn = document.createElement("button");
+    skipBtn.className = "lum-low-rating-skip";
+    skipBtn.type = "button";
+    skipBtn.textContent = "Don't want to say";
+    skipBtn.addEventListener("click", () => {
+      this.modalManager.close();
+    });
+
+    const okBtn = document.createElement("button");
+    okBtn.className = "lum-tc-done-btn";
+    okBtn.type = "button";
+    okBtn.textContent = "OK";
+    okBtn.addEventListener("click", () => {
+      const reason = textarea.value.trim();
+      this.modalManager.close();
+      if (reason && this.comm.connected) {
+        const msg = this.state.wrapMessage(
+          `I gave "${taskTitle}" one star. Here's why: ${reason}\n\n[Patyna: The user rated this task 1 star and shared why. Respond with empathy — acknowledge their feelings briefly. Do NOT celebrate. Keep response to 1-2 sentences.]`,
+        );
+        this.appendChatEntry("user", reason);
+        this.transitionToThinking();
+        this.comm.sendMessage(msg);
+      }
+    });
+
+    actions.append(skipBtn, okBtn);
+    el.append(icon, heading, subtitle, textarea, actions);
+    this.modalManager.open(el);
+    requestAnimationFrame(() => textarea.focus());
   }
 
   private showToast(message: string): void {
