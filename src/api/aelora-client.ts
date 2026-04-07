@@ -259,6 +259,15 @@ export class AeloraClient {
     return this.get<Record<string, MemoryFact[]>>('/api/memory');
   }
 
+  /** Delete a specific memory fact by scope and index. */
+  async deleteMemoryFact(scope: string, index: number): Promise<boolean> {
+    const result = await this.request<{ success?: boolean }>(
+      `/api/memory/${encodeURIComponent(scope)}/${index}`,
+      { method: 'DELETE' },
+    );
+    return result !== null;
+  }
+
   /** Get memory facts for a specific scope (e.g. "user:tyler"). */
   async getMemoryByScope(scope: string): Promise<MemoryFact[] | null> {
     const resp = await this.get<{ scope: string; facts: MemoryFact[] }>(

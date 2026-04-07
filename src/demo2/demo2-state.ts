@@ -217,7 +217,7 @@ export class Demo2State {
   }
 
   /** Apply user-scoped facts from getUser() profile into the vault. */
-  applyUserFacts(facts: MemoryFact[]): void {
+  applyUserFacts(facts: MemoryFact[], scope?: string): void {
     const vaultFacts: VaultFact[] = facts.map((f, i) => ({
       id: `user-${i}`,
       emoji: categoryEmoji(f.category),
@@ -225,6 +225,8 @@ export class Demo2State {
       category: f.category,
       confidence: f.confidence,
       savedAt: f.savedAt,
+      sourceIndex: i,
+      sourceScope: scope,
     }));
 
     if (vaultFacts.length > 0) {

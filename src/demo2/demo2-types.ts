@@ -70,6 +70,10 @@ export interface VaultFact {
   category?: string;        // e.g. "preference", "habit", "goal"
   confidence?: string;      // "stated" | "inferred" | "observed"
   savedAt?: string;
+  /** Original array index in the memory scope (for DELETE API). */
+  sourceIndex?: number;
+  /** Memory scope this fact belongs to (e.g. "user:tyler"). */
+  sourceScope?: string;
 }
 
 export interface LuminoraFixture {

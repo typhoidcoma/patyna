@@ -750,7 +750,7 @@ export class Demo2App {
         .catch(() => null)
         .then((facts) => {
           if (facts?.length) {
-            this.state.applyUserFacts(facts);
+            this.state.applyUserFacts(facts, scope);
             console.log(
               `[LUMINORA] Vault: ${facts.length} facts from /api/memory/scope (${scope})`,
             );
@@ -763,6 +763,21 @@ export class Demo2App {
         .finally(() => {
           this.vaultModal.open(this.state.getVaultFacts());
         });
+
+      this.vaultModal.onDeleteFact = (fact) => {
+        if (fact.sourceScope != null && fact.sourceIndex != null) {
+          this.aeloraClient
+            .deleteMemoryFact(fact.sourceScope, fact.sourceIndex)
+            .then((ok) => {
+              if (ok) {
+                console.log(`[LUMINORA] Deleted memory fact: "${fact.text}"`);
+                this.syncVault();
+              } else {
+                this.showToast("Could not delete memory");
+              }
+            });
+        }
+      };
     };
 
     this.navBar.onFeedbackClick = () => {
@@ -1230,7 +1245,7 @@ export class Demo2App {
       .catch(() => null)
       .then((facts) => {
         if (facts?.length) {
-          this.state.applyUserFacts(facts);
+          this.state.applyUserFacts(facts, scope);
           console.log(
             `[LUMINORA] Vault synced: ${facts.length} facts from /api/memory/scope`,
           );
@@ -1303,7 +1318,7 @@ export class Demo2App {
     }
 
     if (scopedFacts?.length) {
-      this.state.applyUserFacts(scopedFacts);
+      this.state.applyUserFacts(scopedFacts, scope ?? undefined);
       console.log(
         `[LUMINORA] Loaded ${scopedFacts.length} facts from /api/memory/scope (${scope})`,
       );

@@ -7,6 +7,7 @@ import { ModalManager } from './modal-manager.ts';
 
 export class VaultModal {
   private modal: ModalManager;
+  onDeleteFact?: (fact: VaultFact) => void;
 
   constructor(modal: ModalManager) {
     this.modal = modal;
@@ -76,11 +77,19 @@ export class VaultModal {
         content.appendChild(meta);
       }
 
-      const chevron = document.createElement('span');
-      chevron.className = 'lum-vault-fact-chevron';
-      chevron.textContent = '›';
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'lum-vault-fact-delete';
+      deleteBtn.setAttribute('aria-label', 'Remove memory');
+      deleteBtn.innerHTML = '&times;';
+      deleteBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        row.classList.add('lum-vault-fact--removing');
+        setTimeout(() => row.remove(), 250);
+        this.onDeleteFact?.(fact);
+      });
 
-      row.append(emoji, content, chevron);
+      row.append(emoji, content, deleteBtn);
       list.appendChild(row);
     }
 

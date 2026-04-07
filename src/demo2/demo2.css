@@ -2104,6 +2104,33 @@ button.lum-goals-rhythm-btn:active {
   flex-shrink: 0;
 }
 
+.lum-vault-fact-delete {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 1.1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lum-vault-fact-delete:hover {
+  background: rgba(220, 50, 50, 0.2);
+  color: #f66;
+}
+
+.lum-vault-fact--removing {
+  opacity: 0;
+  transform: translateX(20px);
+  transition: opacity 0.25s, transform 0.25s;
+}
+
 /* ── Weekly Rhythm Modal ── */
 
 .lum-rhythm {
