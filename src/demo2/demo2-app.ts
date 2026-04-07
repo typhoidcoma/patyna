@@ -636,8 +636,8 @@ export class Demo2App {
       const row = await this.aeloraClient.createQuest({
         title: data.title,
         description: data.description || undefined,
-        category: data.category || undefined,
-        difficulty: data.difficulty,
+        category: normalizeQuestCategory(data.category),
+        difficulty: data.difficulty || 'medium',
       });
       if (!row) {
         this.showToast("Could not create task");

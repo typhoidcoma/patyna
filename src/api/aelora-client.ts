@@ -389,6 +389,8 @@ export class AeloraClient {
       body: JSON.stringify({
         supabaseUserId: uid,
         quest_type: DEFAULT_QUEST_TYPE,
+        category: 'productivity',
+        difficulty: 'medium',
         ...fields,
       }),
     });
