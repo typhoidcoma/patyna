@@ -112,6 +112,8 @@ export class Demo2App {
   private envMesh: THREE.Mesh | null = null;
   private cleanupFns: (() => void)[] = [];
   private vaultSyncTimer: ReturnType<typeof setInterval> | null = null;
+  private refreshQuestTimer: ReturnType<typeof setTimeout> | null = null;
+  private suppressNextCelebration = false;
   private readonly VAULT_SYNC_INTERVAL_MS = 30_000; // sync every 30s
 
   // Speaking-state tracking (same as DemoApp)
@@ -456,7 +458,7 @@ export class Demo2App {
             difficulty: "medium",
           });
           if (row) {
-            await this.refreshQuestTasks();
+            this.refreshQuestTasks();
             questJustSaved = quickTitle;
           } else {
             this.showToast("Could not add task");
@@ -491,7 +493,7 @@ export class Demo2App {
                 true,
               );
               if (ok) {
-                await this.refreshQuestTasks();
+                this.refreshQuestTasks();
                 top3PatynaNote = `Task "${match.title}" was set as a favorite (TOP 3) via the app API — it should appear in the TOP 3 column. Acknowledge briefly.`;
               } else {
                 this.showToast("Could not update TOP 3");
@@ -586,12 +588,30 @@ export class Demo2App {
         this.showToast("Could not update favorites");
         return false;
       }
-      await this.refreshQuestTasks();
+      this.refreshQuestTasks();
       return true;
     };
 
     this.goalsTasksPanel.onAddTaskClick = () => {
       this.addTaskPanel.open();
+    };
+
+    this.goalsTasksPanel.onDeleteTaskClick = async (taskId) => {
+      const questId = this.state.getQuestId(taskId);
+      if (!questId) {
+        this.showToast("Only quest-backed tasks can be deleted");
+        return;
+      }
+      if (!this.supabaseAuthUserId) {
+        this.showToast("Sign in to delete tasks");
+        return;
+      }
+      const ok = await this.aeloraClient.deleteQuest(questId);
+      if (!ok) {
+        this.showToast("Could not delete task");
+        return;
+      }
+      this.refreshQuestTasks();
     };
 
     this.goalsTasksPanel.onEditTaskClick = (taskId) => {
@@ -616,14 +636,14 @@ export class Demo2App {
       const row = await this.aeloraClient.createQuest({
         title: data.title,
         description: data.description || undefined,
-        category: data.category || undefined,
-        difficulty: data.difficulty,
+        category: normalizeQuestCategory(data.category),
+        difficulty: data.difficulty || 'medium',
       });
       if (!row) {
         this.showToast("Could not create task");
         return false;
       }
-      await this.refreshQuestTasks();
+      this.refreshQuestTasks();
       return true;
     };
 
@@ -661,7 +681,7 @@ export class Demo2App {
         this.showToast("Could not update task");
         return false;
       }
-      await this.refreshQuestTasks();
+      this.refreshQuestTasks();
       return true;
     };
 
@@ -674,12 +694,24 @@ export class Demo2App {
     // Task complete modal done → complete task + send to LLM + API
     this.taskCompleteModal.onDone = (data) => {
       const task = this.state.getTasks().find((t) => t.id === data.taskId);
+
+      // 1-star rating: suppress celebration, ask why
+      if (data.rating === 1) {
+        this.suppressNextCelebration = true;
+      }
+
       const message = this.state.completeTask(data.taskId);
       this.goalsTasksPanel.markTaskComplete(data.taskId);
       this.reportTaskCompletion(data.taskId, {
         notes: data.reflection.trim() || undefined,
       });
       if (task) this.briefing.markDueTodayByTitle(task.title);
+
+      if (data.rating === 1) {
+        this.openLowRatingModal(data.taskTitle);
+        return;
+      }
+
       if (message && this.comm.connected) {
         if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
         this.transitionToThinking();
@@ -688,57 +720,31 @@ export class Demo2App {
     };
 
     // All task click (non-TOP3) → complete directly + API
-    this.goalsTasksPanel.onAllTaskClick = (taskId) => {
-      if (this.isBusy()) return;
-      const task = this.state.getTasks().find((t) => t.id === taskId);
-      const message = this.state.completeTask(taskId);
-      this.goalsTasksPanel.markTaskComplete(taskId);
-      this.reportTaskCompletion(taskId);
-      if (task) this.briefing.markDueTodayByTitle(task.title);
-      if (message && this.comm.connected) {
-        if (task) this.appendChatEntry("user", `Completed: "${task.title}"`);
-        this.transitionToThinking();
-        this.comm.sendMessage(message);
-      }
-    };
+
 
     // Vault button — fetch user-scoped memory facts then open
     this.avatarFrame.onVaultClick = () => {
       const userId = this.aeloraClient.userId;
       const scope = userId ? `user:${userId}` : null;
 
-      Promise.all([
-        scope
-          ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
-          : null,
-        this.aeloraClient.getMemory().catch(() => null),
-        this.aeloraClient.getSession().catch(() => null),
-      ])
-        .then(([scopedFacts, memory, session]) => {
-          // Prefer user-scoped facts from new endpoint
-          if (scopedFacts?.length) {
-            this.state.applyUserFacts(scopedFacts);
+      if (!scope) {
+        console.warn("[LUMINORA] Vault: no userId, showing fixture data");
+        this.vaultModal.open(this.state.getVaultFacts());
+        return;
+      }
+
+      this.aeloraClient
+        .getMemoryByScope(scope)
+        .catch(() => null)
+        .then((facts) => {
+          if (facts?.length) {
+            this.state.applyUserFacts(facts);
             console.log(
-              `[LUMINORA] Vault: ${scopedFacts.length} facts from /api/memory/scope (${scope})`,
-            );
-            // Fallback to all-scope memory
-          } else if (memory && Object.keys(memory).length > 0) {
-            this.state.applyMemoryFacts(memory);
-            console.log(
-              `[LUMINORA] Vault: ${Object.values(memory).flat().length} facts from /api/memory`,
-            );
-            // Then session memories
-          } else if (
-            session?.memories &&
-            Object.keys(session.memories).length > 0
-          ) {
-            this.state.applyMemoryFacts(session.memories);
-            console.log(
-              `[LUMINORA] Vault: ${Object.values(session.memories).flat().length} facts from session`,
+              `[LUMINORA] Vault: ${facts.length} facts from /api/memory/scope (${scope})`,
             );
           } else {
             console.warn(
-              "[LUMINORA] Vault: no facts from any API, showing fixture data",
+              "[LUMINORA] Vault: no facts from user scope, showing fixture data",
             );
           }
         })
@@ -783,13 +789,9 @@ export class Demo2App {
       return false;
     };
 
-    // Briefing due-today toggle → update todo via API
-    this.briefing.onDueTodayToggle = (itemId, completed) => {
-      // itemId format: "todo-{uid}" from briefing todos, or "due-{n}" from fixture
-      const uid = itemId.startsWith("todo-") ? itemId.slice(5) : null;
-      if (uid) {
-        this.aeloraClient.updateTodo(uid, { completed }).catch(() => {});
-      }
+    // Briefing due-today toggle
+    this.briefing.onDueTodayToggle = (_itemId, _completed) => {
+      // Due-today items are now fixture-only (todos deprecated)
     };
 
     const openWeeklyRhythm = () => {
@@ -944,6 +946,12 @@ export class Demo2App {
       // Always update points first
       this.goalsTasksPanel.updatePoints(totalPoints);
 
+      // Skip celebration if 1-star rating
+      if (this.suppressNextCelebration) {
+        this.suppressNextCelebration = false;
+        return;
+      }
+
       // Celebration effects (non-blocking)
       try {
         const allDone = totalPoints === maxPoints;
@@ -1083,6 +1091,61 @@ export class Demo2App {
     if (task) this.taskCompleteModal.open(taskId, task.title);
   }
 
+  /** Show follow-up modal when user gives 1-star rating on a task. */
+  private openLowRatingModal(taskTitle: string): void {
+    const el = document.createElement("div");
+    el.className = "lum-low-rating";
+
+    const icon = document.createElement("div");
+    icon.className = "lum-tc-icon";
+    icon.textContent = "💬";
+
+    const heading = document.createElement("div");
+    heading.className = "lum-tc-heading";
+    heading.textContent = "What happened?";
+
+    const subtitle = document.createElement("div");
+    subtitle.className = "lum-low-rating-subtitle";
+    subtitle.textContent = `You gave "${taskTitle}" one star. Want to share what went wrong?`;
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "lum-tc-textarea";
+    textarea.placeholder = "What made it rough?";
+
+    const actions = document.createElement("div");
+    actions.className = "lum-low-rating-actions";
+
+    const skipBtn = document.createElement("button");
+    skipBtn.className = "lum-low-rating-skip";
+    skipBtn.type = "button";
+    skipBtn.textContent = "Don't want to say";
+    skipBtn.addEventListener("click", () => {
+      this.modalManager.close();
+    });
+
+    const okBtn = document.createElement("button");
+    okBtn.className = "lum-tc-done-btn";
+    okBtn.type = "button";
+    okBtn.textContent = "OK";
+    okBtn.addEventListener("click", () => {
+      const reason = textarea.value.trim();
+      this.modalManager.close();
+      if (reason && this.comm.connected) {
+        const msg = this.state.wrapMessage(
+          `I gave "${taskTitle}" one star. Here's why: ${reason}\n\n[Patyna: The user rated this task 1 star and shared why. Respond with empathy — acknowledge their feelings briefly. Do NOT celebrate. Keep response to 1-2 sentences.]`,
+        );
+        this.appendChatEntry("user", reason);
+        this.transitionToThinking();
+        this.comm.sendMessage(msg);
+      }
+    });
+
+    actions.append(skipBtn, okBtn);
+    el.append(icon, heading, subtitle, textarea, actions);
+    this.modalManager.open(el);
+    requestAnimationFrame(() => textarea.focus());
+  }
+
   private showToast(message: string): void {
     if (!this.toastEl) return;
     this.toastEl.textContent = message;
@@ -1110,13 +1173,7 @@ export class Demo2App {
         .catch(() => {});
     }
 
-    // Mark todo as completed in Google Tasks (legacy todo-backed tasks)
-    const todoUid = this.state.getTodoUid(taskId);
-    if (todoUid) {
-      this.aeloraClient
-        .updateTodo(todoUid, { completed: true })
-        .catch(() => {});
-    }
+
 
     // Create life event for scoring
     const userId = this.aeloraClient.userId;
@@ -1191,10 +1248,8 @@ export class Demo2App {
     this.refreshBackendIdentity(profile);
 
     await this.ttsPlayer.init();
+    // Sync speaker mute → TTS player gain + ElevenLabs muted flag (audio off by default)
     this.navBar.syncSpeakerMuteToAudio();
-
-    // Enable ElevenLabs streaming — starts gated until this; nav speaker mute is separate (media:speakerMute)
-    eventBus.emit("media:ttsToggle", { enabled: true });
 
     // Fetch live API data in parallel (non-blocking — falls back to fixture)
     this.fetchLiveData();
@@ -1212,80 +1267,64 @@ export class Demo2App {
   /** Background-sync user facts into the vault (non-blocking). */
   private syncVault(): void {
     const userId = this.aeloraClient.userId;
-    const scope = userId ? `user:${userId}` : null;
+    if (!userId) return;
+    const scope = `user:${userId}`;
 
-    Promise.all([
-      scope
-        ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
-        : null,
-      this.aeloraClient.getMemory().catch(() => null),
-      this.aeloraClient.getSession().catch(() => null),
-    ]).then(([scopedFacts, memory, session]) => {
-      if (scopedFacts?.length) {
-        this.state.applyUserFacts(scopedFacts);
-        console.log(
-          `[LUMINORA] Vault synced: ${scopedFacts.length} facts from /api/memory/scope`,
-        );
-      } else if (memory && Object.keys(memory).length > 0) {
-        this.state.applyMemoryFacts(memory);
-        console.log(
-          `[LUMINORA] Vault synced: ${Object.values(memory).flat().length} facts from /api/memory`,
-        );
-      } else if (
-        session?.memories &&
-        Object.keys(session.memories).length > 0
-      ) {
-        this.state.applyMemoryFacts(session.memories);
-        console.log(
-          `[LUMINORA] Vault synced: ${Object.values(session.memories).flat().length} facts from session`,
-        );
-      }
-    });
+    this.aeloraClient
+      .getMemoryByScope(scope)
+      .catch(() => null)
+      .then((facts) => {
+        if (facts?.length) {
+          this.state.applyUserFacts(facts);
+          console.log(
+            `[LUMINORA] Vault synced: ${facts.length} facts from /api/memory/scope`,
+          );
+        }
+      });
   }
 
-  /** Reload quests from Supabase and refresh the goals/tasks panel (keeps TOP 3). */
-  private async refreshQuestTasks(): Promise<void> {
-    const userId = this.aeloraClient.userId;
-    if (!userId) return;
-    const rows = await fetchQuestsForUser(userId);
-    if (rows === null) return;
-    this.state.applyQuests(rows);
-    this.goalsTasksPanel.setData(
-      this.state.getGoals(),
-      this.state.getTasks(),
-      this.state.pointsToday,
-      this.state.pointsYesterday,
-    );
+  /** Reload quests from Supabase and refresh the goals/tasks panel (debounced 200ms). */
+  private refreshQuestTasks(): void {
+    if (this.refreshQuestTimer) return;
+    this.refreshQuestTimer = setTimeout(async () => {
+      this.refreshQuestTimer = null;
+      const userId = this.supabaseAuthUserId;
+      if (!userId) return;
+      const rows = await fetchQuestsForUser(userId);
+      if (rows === null) return;
+      this.state.applyQuests(rows);
+      this.goalsTasksPanel.setData(
+        this.state.getGoals(),
+        this.state.getTasks(),
+        this.state.pointsToday,
+        this.state.pointsYesterday,
+      );
+    }, 200);
   }
 
   /** Fetch calendar, todos, memory, scoring from Aelora APIs and overlay onto state. */
   private async fetchLiveData(): Promise<void> {
     const userId = this.aeloraClient.userId;
+    const supabaseUid = this.supabaseAuthUserId;
 
     const scope = userId ? `user:${userId}` : null;
 
-    const questsPromise = userId
-      ? fetchQuestsForUser(userId)
+    const questsPromise = supabaseUid
+      ? fetchQuestsForUser(supabaseUid)
       : Promise.resolve(null);
 
     const [
       calendar,
-      todos,
       questsRows,
       scopedFacts,
-      memory,
-      session,
       scoring,
       leaderboard,
     ] = await Promise.all([
       this.aeloraClient.getCalendarEvents(3).catch(() => null),
-      this.aeloraClient.getTodos("pending").catch(() => null),
       questsPromise,
       scope
         ? this.aeloraClient.getMemoryByScope(scope).catch(() => null)
         : null,
-      this.aeloraClient.getMemory().catch(() => null),
-      this.aeloraClient.getSession().catch(() => null),
       userId
         ? this.aeloraClient.getScoringStats(userId).catch(() => null)
         : null,
@@ -1310,29 +1349,10 @@ export class Demo2App {
       updated = true;
     }
 
-    if (todos && todos.length > 0) {
-      this.state.applyTodosToBriefing(todos);
-      console.log(
-        `[LUMINORA] Loaded ${todos.length} todos (briefing due today)`,
-      );
-      updated = true;
-    }
-
-    // Prefer scoped user facts → all-scope memory → session memories
     if (scopedFacts?.length) {
       this.state.applyUserFacts(scopedFacts);
       console.log(
         `[LUMINORA] Loaded ${scopedFacts.length} facts from /api/memory/scope (${scope})`,
-      );
-    } else if (memory && Object.keys(memory).length > 0) {
-      this.state.applyMemoryFacts(memory);
-      console.log(
-        `[LUMINORA] Loaded ${Object.values(memory).flat().length} memory facts from /api/memory`,
-      );
-    } else if (session?.memories && Object.keys(session.memories).length > 0) {
-      this.state.applyMemoryFacts(session.memories);
-      console.log(
-        `[LUMINORA] Loaded ${Object.values(session.memories).flat().length} memory facts from session`,
       );
     }
 
@@ -1496,6 +1516,10 @@ export class Demo2App {
     if (this.vaultSyncTimer) {
       clearInterval(this.vaultSyncTimer);
       this.vaultSyncTimer = null;
+    }
+    if (this.refreshQuestTimer) {
+      clearTimeout(this.refreshQuestTimer);
+      this.refreshQuestTimer = null;
     }
     for (const fn of this.cleanupFns) fn();
     this.cleanupFns.length = 0;

@@ -408,6 +408,37 @@ body {
   border-radius: 2px;
 }
 
+/* ── Thinking dots ── */
+
+.lum-thinking-dots {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  height: 1.55em;
+}
+
+.lum-thinking-dots span {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--lum-pink-deep, #f94d8a);
+  opacity: 0.4;
+  animation: lum-dot-pulse 1.4s ease-in-out infinite;
+}
+
+.lum-thinking-dots span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.lum-thinking-dots span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes lum-dot-pulse {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1.1); }
+}
+
 /* ── TTS Toggle ── */
 
 .lum-nav-tts {
@@ -736,6 +767,25 @@ button.lum-goals-rhythm-btn:active {
   letter-spacing: 0.02em;
 }
 
+.lum-top3-slot-empty.drag-over {
+  border-color: var(--lum-pink);
+  background: rgba(249, 77, 138, 0.08);
+  box-shadow: inset 0 0 12px rgba(249, 77, 138, 0.1);
+}
+
+/* Drag state for ALL TASKS items */
+.lum-all-task-item[draggable] {
+  cursor: grab;
+}
+
+.lum-all-task-item[draggable]:active {
+  cursor: grabbing;
+}
+
+.lum-all-task-item.dragging {
+  opacity: 0.4;
+}
+
 /* Star favorite (TOP 3 + ALL TASKS) */
 .lum-task-star {
   flex-shrink: 0;
@@ -1028,6 +1078,48 @@ button.lum-goals-rhythm-btn:active {
 }
 
 .lum-right--busy .lum-all-task-edit {
+  pointer-events: none;
+  opacity: 0.45;
+}
+
+.lum-all-task-delete {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--lum-text-muted, #bbb);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.12s;
+}
+
+.lum-all-task-delete:hover {
+  background: rgba(220, 50, 50, 0.10);
+  color: #d33;
+}
+
+.lum-all-task-delete:active {
+  transform: scale(0.92);
+}
+
+.lum-all-task-delete-icon {
+  width: 16px;
+  height: 16px;
+  display: block;
+  opacity: 0.45;
+}
+
+.lum-all-task-delete:hover .lum-all-task-delete-icon {
+  opacity: 0.95;
+}
+
+.lum-right--busy .lum-all-task-delete {
   pointer-events: none;
   opacity: 0.45;
 }
@@ -1486,6 +1578,51 @@ button.lum-goals-rhythm-btn:active {
 
 .lum-tc-done-btn:active {
   transform: scale(0.97);
+}
+
+/* ── Low Rating Modal ── */
+
+.lum-low-rating {
+  padding: 28px 32px;
+  text-align: center;
+  min-width: 340px;
+  max-width: 420px;
+}
+
+.lum-low-rating-subtitle {
+  font-size: 0.88rem;
+  color: var(--text-secondary, #888);
+  line-height: 1.5;
+  margin-bottom: 16px;
+}
+
+.lum-low-rating-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.lum-low-rating-skip {
+  flex: 1;
+  padding: 12px 0;
+  border: 1px solid var(--lum-border, #e0d6e8);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-secondary, #888);
+  font-family: var(--font-family);
+  font-size: 0.88rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lum-low-rating-skip:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text-primary);
+}
+
+.lum-low-rating-actions .lum-tc-done-btn {
+  flex: 1;
+  width: auto;
 }
 
 /* ── Feedback Panel ── */

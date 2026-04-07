@@ -10,10 +10,10 @@ import { eventBus } from '@/core/event-bus.ts';
 import { getFixture2 } from './demo2-data.ts';
 import type {
   LuminoraFixture, LuminoraGoal, LuminoraTask,
-  DailyBriefing, Habit, VaultFact, ScheduleEvent, DueTodayItem,
+  DailyBriefing, Habit, VaultFact, ScheduleEvent,
 } from './demo2-types.ts';
 import type {
-  CalendarEvent, TodoItem, MemoryFact, ScoringStats, LeaderboardTask,
+  CalendarEvent, MemoryFact, ScoringStats, LeaderboardTask,
 } from '@/api/aelora-client.ts';
 import type { QuestRow } from '@/quests/quest-types.ts';
 import {
@@ -39,7 +39,7 @@ export class Demo2State {
   private _scoringStats: ScoringStats | null = null;
   private _liveTaskMap = new Map<
     string,
-    { todoUid?: string; lifeEventId?: string; questId?: string }
+    { lifeEventId?: string; questId?: string }
   >();
 
   constructor() {
@@ -78,11 +78,6 @@ export class Demo2State {
       points: this.fixture.pointsToday + points,
       maxPoints: this.fixture.pointsToday + this._maxPoints,
     };
-  }
-
-  /** Get the todo UID backing a task (if loaded from API). */
-  getTodoUid(taskId: string): string | undefined {
-    return this._liveTaskMap.get(taskId)?.todoUid;
   }
 
   /** Supabase quest row id when the task row came from `quests` (same as task id). */
@@ -128,22 +123,6 @@ export class Demo2State {
     });
 
     this.fixture.briefing.schedule = scheduleItems;
-  }
-
-  /**
-   * Overlay Google todos onto the briefing due-today list only.
-   * Task list rows come from Supabase `quests` (see applyQuests).
-   */
-  applyTodosToBriefing(todos: TodoItem[]): void {
-    if (!todos.length) return;
-
-    const pending = todos.filter(t => !t.completed);
-    const dueItems: DueTodayItem[] = pending.slice(0, 6).map(t => ({
-      id: `todo-${t.uid}`,
-      title: t.title,
-      completed: t.completed,
-    }));
-    this.fixture.briefing.dueToday = dueItems;
   }
 
   /**
@@ -196,12 +175,14 @@ export class Demo2State {
     );
     if (removedQuestIds.length > 0) {
       const p = this.getProgress();
-      eventBus.emit('demo:taskComplete', {
-        taskId: removedQuestIds[0]!,
-        points: p.points,
-        totalPoints: p.points,
-        maxPoints: p.maxPoints,
-      });
+      for (const questId of removedQuestIds) {
+        eventBus.emit('demo:taskComplete', {
+          taskId: questId,
+          points: p.points,
+          totalPoints: p.points,
+          maxPoints: p.maxPoints,
+        });
+      }
     }
   }
 
@@ -262,15 +243,19 @@ export class Demo2State {
     this.fixture.pointsToday = stats.xp;
   }
 
-  /** Apply leaderboard tasks as TOP 3. */
+  /** Fill empty TOP 3 slots with leaderboard tasks (quest favorites take priority). */
   applyLeaderboard(tasks: LeaderboardTask[]): void {
     if (!tasks.length) return;
 
-    const top3: LuminoraTask[] = tasks.slice(0, 3).map((t, i) => ({
+    const existingTop3 = this.fixture.tasks.filter(t => t.isTop3 && !t.completed);
+    const slotsAvailable = Math.max(0, 3 - existingTop3.length);
+    if (slotsAvailable === 0) return;
+
+    const fillers: LuminoraTask[] = tasks.slice(0, slotsAvailable).map((t, i) => ({
       id: `lb-${t.id}`,
       goalId: '',
       title: t.title,
-      emoji: ['🎯', '⚡', '🔥'][i] ?? '🎯',
+      emoji: ['🎯', '⚡', '🔥'][existingTop3.length + i] ?? '🎯',
       points: t.score,
       difficulty: (t.score >= 10 ? 5 : t.score >= 7 ? 4 : 3) as 1 | 2 | 3 | 4 | 5,
       completed: false,
@@ -279,9 +264,8 @@ export class Demo2State {
       timerRunning: false,
     }));
 
-    // Replace fixture TOP 3 with leaderboard tasks
     const nonTop3 = this.fixture.tasks.filter(t => !t.isTop3);
-    this.fixture.tasks = [...top3, ...nonTop3];
+    this.fixture.tasks = [...existingTop3, ...fillers, ...nonTop3];
     this._maxPoints = this.fixture.tasks.reduce((s, t) => s + t.points, 0);
   }
 

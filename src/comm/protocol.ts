@@ -242,9 +242,8 @@ export class CommManager {
             table: 'quests',
             action: 'tool-end',
           });
-        } else {
-          console.log('[Comm] Unhandled event:', event, data);
         }
+        // Other mindmap events (conversation:message, tool:start, etc.) are informational — ignore silently
         break;
       }
       default:

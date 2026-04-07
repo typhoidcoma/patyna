@@ -40,4 +40,5 @@ export interface QuestRow {
   created_at: string;
   completed_at: string | null;
   updated_at: string | null;
+  started_at: string | null;
 }

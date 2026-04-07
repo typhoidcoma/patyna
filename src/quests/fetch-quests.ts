@@ -7,7 +7,7 @@ import type { QuestRow } from './quest-types.ts';
 
 /** Columns returned from `.select()` for typed quest rows. */
 const QUEST_SELECT_COLUMNS =
-  'id,user_id,title,description,category,quest_type,target_value,current_value,status,difficulty,suggested_by,is_favorite,created_at,completed_at,updated_at';
+  'id,user_id,title,description,category,quest_type,target_value,current_value,status,difficulty,suggested_by,is_favorite,created_at,completed_at,updated_at,started_at';
 
 /**
  * Load quests for the signed-in user. Returns null on transport/RLS/query error

@@ -8,9 +8,10 @@ const SPEAKER_MUTED_STORAGE_KEY = 'luminora:speakerMuted';
 
 function readStoredSpeakerMuted(): boolean {
   try {
-    return localStorage.getItem(SPEAKER_MUTED_STORAGE_KEY) === '1';
+    const val = localStorage.getItem(SPEAKER_MUTED_STORAGE_KEY);
+    return val === null || val === '1'; // default to muted
   } catch {
-    return false;
+    return true;
   }
 }
 
