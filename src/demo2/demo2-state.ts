@@ -338,7 +338,15 @@ export class Demo2State {
   }
 
   buildPrimingMessage(username: string): string {
-    return `${this.buildContext()}\n\nUser: ${username}. You are Wendy, an AI life coach for college students. Greet them briefly. Keep response to 1 or 2 sentences, under 30 words total.`;
+    const lastVisit = readLastVisit();
+    const timeAway = lastVisit ? describeTimeAway(lastVisit) : null;
+    saveLastVisit();
+
+    const awaySuffix = timeAway
+      ? ` They were last here ${timeAway} ago — acknowledge the time naturally (e.g. "welcome back" or "been a while").`
+      : ' This appears to be their first visit — welcome them warmly.';
+
+    return `${this.buildContext()}\n\nUser: ${username}. You are Wendy, an AI life coach for college students. Greet them briefly.${awaySuffix} Keep response to 1 or 2 sentences, under 30 words total.`;
   }
 
   buildContext(): string {
@@ -408,6 +416,39 @@ function fmtTimer(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+const LAST_VISIT_KEY = 'luminora:lastVisit';
+
+function readLastVisit(): Date | null {
+  try {
+    const raw = localStorage.getItem(LAST_VISIT_KEY);
+    if (!raw) return null;
+    const d = new Date(raw);
+    return isNaN(d.getTime()) ? null : d;
+  } catch {
+    return null;
+  }
+}
+
+function saveLastVisit(): void {
+  try {
+    localStorage.setItem(LAST_VISIT_KEY, new Date().toISOString());
+  } catch { /* quota / private mode */ }
+}
+
+function describeTimeAway(last: Date): string {
+  const ms = Date.now() - last.getTime();
+  const mins = Math.floor(ms / 60_000);
+  if (mins < 2) return 'a moment';
+  if (mins < 60) return `${mins} minutes`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs === 1 ? '1 hour' : `${hrs} hours`;
+  const days = Math.floor(hrs / 24);
+  if (days === 1) return '1 day';
+  if (days < 7) return `${days} days`;
+  const weeks = Math.floor(days / 7);
+  return weeks === 1 ? '1 week' : `${weeks} weeks`;
 }
 
 /** User's local weekday, uppercased to match the briefing pill style. */
