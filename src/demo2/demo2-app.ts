@@ -1290,8 +1290,8 @@ export class Demo2App {
     // Sync speaker mute → TTS player gain + ElevenLabs muted flag (audio off by default)
     this.navBar.syncSpeakerMuteToAudio();
 
-    // Fetch live API data in parallel (non-blocking — falls back to fixture)
-    this.fetchLiveData();
+    // Fetch live API data BEFORE connecting so the priming message has full task context
+    await this.fetchLiveData();
 
     // Periodically sync vault facts in background
     this.vaultSyncTimer = setInterval(
