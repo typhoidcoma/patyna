@@ -84,6 +84,7 @@ export class VaultModal {
       deleteBtn.innerHTML = '&times;';
       deleteBtn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (!confirm('Remove this memory? This cannot be undone.')) return;
         row.classList.add('lum-vault-fact--removing');
         setTimeout(() => row.remove(), 250);
         this.onDeleteFact?.(fact);
