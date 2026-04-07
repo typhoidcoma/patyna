@@ -16,7 +16,23 @@
  * All methods return null on failure (non-blocking, logged).
  */
 
-import { DEFAULT_QUEST_TYPE, type QuestRow } from '@/quests/quest-types.ts';
+import type { QuestRow } from '@/quests/quest-types.ts';
+
+// ── DB constraint validators — reject unknown values, fall back to safe defaults ──
+
+const VALID_CATEGORIES = new Set(['mental_health', 'fitness', 'learning', 'productivity']);
+const VALID_QUEST_TYPES = new Set(['daily', 'milestone', 'streak']);
+const VALID_DIFFICULTIES = new Set(['easy', 'medium', 'hard']);
+
+function validCategory(v?: string): string {
+  return VALID_CATEGORIES.has(v ?? '') ? v! : 'productivity';
+}
+function validQuestType(v?: string): string {
+  return VALID_QUEST_TYPES.has(v ?? '') ? v! : 'daily';
+}
+function validDifficulty(v?: string): string {
+  return VALID_DIFFICULTIES.has(v ?? '') ? v! : 'medium';
+}
 
 // ── Response types ──
 
@@ -388,10 +404,12 @@ export class AeloraClient {
       method: 'POST',
       body: JSON.stringify({
         supabaseUserId: uid,
-        quest_type: DEFAULT_QUEST_TYPE,
-        category: 'productivity',
-        difficulty: 'medium',
-        ...fields,
+        title: fields.title,
+        description: fields.description,
+        quest_type: validQuestType(fields.quest_type),
+        category: validCategory(fields.category),
+        difficulty: validDifficulty(fields.difficulty),
+        suggested_by: 'user',
       }),
     });
   }
