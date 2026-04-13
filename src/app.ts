@@ -9,6 +9,7 @@ import { CommManager } from '@/comm/protocol.ts';
 import { AudioManager } from '@/audio/audio-manager.ts';
 import { TTSPlayer } from '@/audio/tts-player.ts';
 import { ElevenLabsTTS } from '@/audio/elevenlabs-tts.ts';
+import { SpeakingState } from '@/core/speaking-state.ts';
 import { VoiceManager } from '@/voice/voice-manager.ts';
 import { Webcam } from '@/tracking/webcam.ts';
 import { FaceTracker } from '@/tracking/face-tracker.ts';
@@ -38,11 +39,7 @@ export class App {
   private config: PatynaConfig;
   private envMesh: THREE.Mesh | null = null;
   private dashboardTimer = 0;
-
-  // Speaking-state completion tracking
-  private textStreamDone = false;
-  private audioPlaying = false;
-  private ttsStreamOpen = false;
+  private speaking: SpeakingState;
 
   // Lazy init flags for mic/camera
   private micInitialized = false;
@@ -67,6 +64,13 @@ export class App {
     this.voiceManager = new VoiceManager();
     this.webcam = new Webcam();
     this.faceTracker = new FaceTracker(this.webcam);
+
+    // Speaking state (shared logic for text/TTS/audio completion tracking)
+    this.speaking = new SpeakingState({
+      stateMachine: this.stateMachine,
+      elevenLabs: this.elevenLabs,
+      ttsPlayer: this.ttsPlayer,
+    });
 
     // Presence detection (consumes face tracker events)
     this.presenceManager = new PresenceManager(config.presence);
@@ -173,74 +177,70 @@ export class App {
     });
 
     eventBus.on('comm:disconnected', () => {
-      this.resetSpeakingState();
+      this.speaking.reset();
       this.stateMachine.reset();
     });
 
     eventBus.on('comm:error', ({ code, message }) => {
       console.error(`[Patyna] Server error (${code}): ${message}`);
-      this.resetSpeakingState();
+      this.speaking.reset();
       this.stateMachine.reset();
     });
 
     // ── LLM response flow (text + audio) ──
 
-    // Text streaming — track progress, stay in thinking (avatar stays calm)
     eventBus.on('comm:textDelta', () => {
       if (this.stateMachine.state === 'thinking') {
-        this.textStreamDone = false;
-        this.audioPlaying = false;
+        this.speaking.textStreamDone = false;
+        this.speaking.audioPlaying = false;
       }
     });
 
-    // Text stream complete
     eventBus.on('comm:textDone', () => {
-      this.textStreamDone = true;
-      this.tryFinishResponse();
+      this.speaking.textStreamDone = true;
+      this.speaking.tryFinishResponse();
     });
 
-    // ── TTS stream lifecycle (ElevenLabs WS open/close) ──
+    // ── TTS stream lifecycle ──
 
-    // ElevenLabs WS connected — stream is now open
     eventBus.on('audio:ttsStreamStart', () => {
-      this.ttsStreamOpen = true;
+      this.speaking.ttsStreamOpen = true;
     });
 
-    // ElevenLabs finished sending all audio for this response
     eventBus.on('audio:ttsStreamDone', () => {
-      this.ttsStreamOpen = false;
-      this.tryFinishResponse();
+      this.speaking.ttsStreamOpen = false;
+      this.speaking.tryFinishResponse();
     });
 
     // ── Audio worklet playback state ──
 
     eventBus.on('audio:playbackStart', () => {
-      this.audioPlaying = true;
-      // Transition to speaking when voice actually starts
+      this.speaking.audioPlaying = true;
+      if (this.speaking.finishTimer) {
+        clearTimeout(this.speaking.finishTimer);
+        this.speaking.finishTimer = null;
+      }
       const s = this.stateMachine.state;
       if (s === 'thinking' || s === 'idle') {
         this.stateMachine.transition('speaking');
       }
     });
 
-    // Audio playback finished — go idle if text is also done
     eventBus.on('audio:playbackEnd', () => {
-      this.audioPlaying = false;
-      this.tryFinishResponse();
+      this.speaking.audioPlaying = false;
+      this.speaking.tryFinishResponse();
     });
 
     // ── Voice input ──
 
-    // User starts speaking → interrupt any TTS + go to listening
     eventBus.on('voice:speechStart', () => {
       this.interruptAndListen();
     });
 
-    // Final transcript → send to Aelora + transition to thinking
     eventBus.on('voice:transcript', ({ text, isFinal }) => {
       if (isFinal && this.comm.connected) {
         this.comm.sendMessage(text);
-        this.transitionToThinking();
+        this.speaking.transitionToThinking();
       }
     });
 
@@ -281,68 +281,17 @@ export class App {
 
   /**
    * Interrupt current activity (flush TTS, stop speaking) and go to listening.
-   * Handles any current state: idle, listening, thinking, speaking.
    */
   private interruptAndListen(): void {
-    this.elevenLabs.close();
-    this.ttsPlayer.flush();
-    this.resetSpeakingState();
+    this.speaking.interruptAndReset();
 
     const s = this.stateMachine.state;
     if (s === 'speaking' || s === 'thinking') {
-      // speaking → idle (valid) or thinking → idle (valid), then idle → listening
       this.stateMachine.transition('idle');
       this.stateMachine.transition('listening');
     } else if (s === 'idle') {
       this.stateMachine.transition('listening');
     }
-    // If already listening, stay there
-  }
-
-  /**
-   * Transition to thinking state from wherever we are.
-   * Handles text input (from idle) and voice input (from listening).
-   */
-  private transitionToThinking(): void {
-    const s = this.stateMachine.state;
-    if (s === 'listening') {
-      this.stateMachine.transition('thinking');
-    } else if (s === 'idle') {
-      // Text input: idle → listening → thinking
-      this.stateMachine.transition('listening');
-      this.stateMachine.transition('thinking');
-    } else if (s === 'speaking' || s === 'thinking') {
-      // Interrupt current response and start new thinking cycle
-      this.elevenLabs.close();
-      this.ttsPlayer.flush();
-      this.resetSpeakingState();
-      this.stateMachine.transition('idle');
-      this.stateMachine.transition('listening');
-      this.stateMachine.transition('thinking');
-    }
-  }
-
-  /**
-   * Transition back to idle when ALL three conditions are met:
-   * 1. Text stream from LLM is complete
-   * 2. Audio worklet buffer is empty (not playing)
-   * 3. ElevenLabs TTS stream is closed (all audio received)
-   */
-  private tryFinishResponse(): void {
-    if (!this.textStreamDone) return;          // Still streaming text
-    if (this.audioPlaying) return;             // Still playing audio
-    if (this.ttsStreamOpen) return;            // ElevenLabs still sending audio
-    const s = this.stateMachine.state;
-    if (s === 'speaking' || s === 'thinking') {
-      this.stateMachine.transition('idle');
-    }
-  }
-
-  /** Reset speaking-state tracking flags. */
-  private resetSpeakingState(): void {
-    this.textStreamDone = false;
-    this.audioPlaying = false;
-    this.ttsStreamOpen = false;
   }
 
   /** Fetch user profile, session data, and current mood from Aelora REST API (non-blocking). */

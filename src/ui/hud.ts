@@ -1,79 +1,59 @@
 import { eventBus } from '@/core/event-bus.ts';
-import type { AppState } from '@/types/config.ts';
-import type { MoodData } from '@/types/messages.ts';
-import './hud.css';
+import { BaseHUD } from './base-hud.ts';
 
 /**
- * Heads-Up Display — split into three sections:
- *   1. Nav bar (top of #app): logo, controls, hamburger
- *   2. Overlay (inside scene wrapper): toast, start/login prompt
- *   3. Panel (below scene wrapper): text input + AI response
+ * Heads-Up Display — production variant.
+ *
+ * Nav center: mic, camera, TTS toggles.
+ * Nav right: sidebar hamburger.
  */
-export class HUD {
-  private nav: HTMLDivElement;
-  private overlay: HTMLDivElement;
-  private panel: HTMLDivElement;
-  private statusDot: HTMLDivElement;
-  private statusLabel: HTMLSpanElement;
-  private connDot: HTMLDivElement;
-  private micBtn: HTMLButtonElement;
-  private camBtn: HTMLButtonElement;
-  private ttsBtn: HTMLButtonElement;
-  private dashBtn: HTMLButtonElement;
+export class HUD extends BaseHUD {
+  private micBtn!: HTMLButtonElement;
+  private camBtn!: HTMLButtonElement;
+  private ttsBtn!: HTMLButtonElement;
+  private dashBtn!: HTMLButtonElement;
   private micEnabled = false;
   private camEnabled = false;
   private ttsEnabled = false;
-  private moodLabel: HTMLSpanElement;
-  private responseArea: HTMLDivElement;
-  private responseText: HTMLDivElement;
-  private responseBuffer = '';
-  private userText: HTMLDivElement;
-  private inputRow: HTMLDivElement;
-  private input: HTMLInputElement;
-  private sendBtn: HTMLButtonElement;
-  private toast: HTMLDivElement;
-  private startOverlay: HTMLDivElement;
-  private progressBar: HTMLDivElement;
-  private progressLabel: HTMLSpanElement;
-  private toastTimer = 0;
-  private userTextTimer = 0;
 
-  /** Username entered on the login screen */
-  enteredUsername = '';
-
-  /** Resolves when the user submits the login form */
-  readonly ready: Promise<void>;
-
-  /**
-   * @param sceneWrap — The scene wrapper div (overlay is positioned absolute inside this)
-   * @param panelContainer — The container for the panel (appended after sceneWrap)
-   * @param navContainer — The root #app container (nav bar is prepended here)
-   */
   constructor(sceneWrap: HTMLElement, panelContainer: HTMLElement, navContainer: HTMLElement) {
-    // ════════════════════════════════════════════
-    // NAV BAR — full-width bar at the top of #app
-    // ════════════════════════════════════════════
-    this.nav = document.createElement('div');
-    this.nav.className = 'hud-nav';
+    super(sceneWrap, panelContainer, navContainer);
 
-    // ── Left: logo + connection dot ──
-    const navLeft = document.createElement('div');
-    navLeft.className = 'hud-nav-left';
+    // Toggle handlers
+    this.micBtn.addEventListener('click', () => {
+      this.micEnabled = !this.micEnabled;
+      this.micBtn.dataset.active = this.micEnabled ? 'on' : 'off';
+      eventBus.emit('media:micToggle', { enabled: this.micEnabled });
+    });
+    this.camBtn.addEventListener('click', () => {
+      this.camEnabled = !this.camEnabled;
+      this.camBtn.dataset.active = this.camEnabled ? 'on' : 'off';
+      eventBus.emit('media:cameraToggle', { enabled: this.camEnabled });
+    });
+    this.ttsBtn.addEventListener('click', () => {
+      this.ttsEnabled = !this.ttsEnabled;
+      this.ttsBtn.dataset.active = this.ttsEnabled ? 'on' : 'off';
+      eventBus.emit('media:ttsToggle', { enabled: this.ttsEnabled });
+    });
+    this.dashBtn.addEventListener('click', () => {
+      eventBus.emit('sidebar:toggle');
+    });
 
-    const wordmark = document.createElement('span');
-    wordmark.className = 'hud-wordmark';
-    wordmark.textContent = 'PATYNA';
+    // Media status (mic/camera indicators)
+    eventBus.on('media:status', ({ mic, camera }) => {
+      this.micEnabled = mic;
+      this.camEnabled = camera;
+      this.micBtn.dataset.active = mic ? 'on' : 'off';
+      this.camBtn.dataset.active = camera ? 'on' : 'off';
+    });
 
-    this.connDot = document.createElement('div');
-    this.connDot.className = 'hud-conn';
-    this.connDot.dataset.conn = 'disconnected';
+    // Sidebar state → sync dash button
+    eventBus.on('sidebar:stateChange', ({ visible }) => {
+      this.dashBtn.dataset.active = visible ? 'on' : 'off';
+    });
+  }
 
-    navLeft.append(wordmark, this.connDot);
-
-    // ── Center: media toggles + status + mood ──
-    const navCenter = document.createElement('div');
-    navCenter.className = 'hud-nav-center';
-
+  protected buildNavCenter(container: HTMLDivElement): void {
     this.micBtn = document.createElement('button');
     this.micBtn.className = 'hud-toggle-btn';
     this.micBtn.dataset.kind = 'mic';
@@ -95,341 +75,17 @@ export class HUD {
     this.ttsBtn.textContent = '\u{1F50A}';
     this.ttsBtn.title = 'Toggle voice (ElevenLabs TTS)';
 
-    const status = document.createElement('div');
-    status.className = 'hud-status';
+    container.append(this.micBtn, this.camBtn, this.ttsBtn);
+  }
 
-    this.statusDot = document.createElement('div');
-    this.statusDot.className = 'hud-status-dot';
-    this.statusDot.dataset.state = 'idle';
-
-    this.statusLabel = document.createElement('span');
-    this.statusLabel.className = 'hud-status-label';
-    this.statusLabel.textContent = 'idle';
-
-    status.append(this.statusDot, this.statusLabel);
-
-    this.moodLabel = document.createElement('span');
-    this.moodLabel.className = 'hud-mood';
-
-    navCenter.append(this.micBtn, this.camBtn, this.ttsBtn, status, this.moodLabel);
-
-    // ── Right: hamburger (sidebar toggle) ──
-    const navRight = document.createElement('div');
-    navRight.className = 'hud-nav-right';
-
+  protected buildNavRight(container: HTMLDivElement): void {
     this.dashBtn = document.createElement('button');
     this.dashBtn.className = 'hud-toggle-btn';
     this.dashBtn.dataset.kind = 'dash';
-    this.dashBtn.dataset.active = 'off'; // sidebar emits initial state to sync this
+    this.dashBtn.dataset.active = 'off';
     this.dashBtn.textContent = '\u2630';
     this.dashBtn.title = 'Toggle dashboard sidebar';
 
-    navRight.append(this.dashBtn);
-
-    this.nav.append(navLeft, navCenter, navRight);
-    navContainer.prepend(this.nav);
-
-    // ════════════════════════════════════════════
-    // OVERLAY — positioned absolute over the 3D scene
-    // ════════════════════════════════════════════
-    this.overlay = document.createElement('div');
-    this.overlay.className = 'hud-overlay';
-
-    // ── Error toast ──
-    this.toast = document.createElement('div');
-    this.toast.className = 'hud-toast';
-
-    // ── Start overlay (login form) ──
-    this.startOverlay = document.createElement('div');
-    this.startOverlay.className = 'hud-start';
-
-    const startInner = document.createElement('div');
-    startInner.className = 'hud-start-inner';
-
-    const loginForm = document.createElement('div');
-    loginForm.className = 'hud-login-form';
-
-    const heading = document.createElement('div');
-    heading.className = 'hud-login-heading';
-    heading.textContent = 'Hi!';
-
-    const loginInput = document.createElement('input');
-    loginInput.className = 'hud-login-input';
-    loginInput.type = 'text';
-    loginInput.placeholder = 'Your name\u2026';
-    loginInput.autocomplete = 'name';
-    loginInput.maxLength = 40;
-    loginInput.value = localStorage.getItem('patyna:username') ?? '';
-
-    const loginBtn = document.createElement('button');
-    loginBtn.className = 'hud-login-btn';
-    loginBtn.textContent = 'Begin';
-
-    loginForm.append(heading, loginInput, loginBtn);
-
-    // Progress bar (hidden until loading starts)
-    const progressWrap = document.createElement('div');
-    progressWrap.className = 'hud-progress-wrap';
-    this.progressBar = document.createElement('div');
-    this.progressBar.className = 'hud-progress-bar';
-    this.progressLabel = document.createElement('span');
-    this.progressLabel.className = 'hud-progress-label';
-    progressWrap.appendChild(this.progressBar);
-
-    startInner.append(loginForm, progressWrap, this.progressLabel);
-    this.startOverlay.appendChild(startInner);
-
-    this.overlay.append(this.toast, this.startOverlay);
-    sceneWrap.appendChild(this.overlay);
-
-    // ════════════════════════════════════════════
-    // PANEL — real DOM element below the 3D scene
-    // ════════════════════════════════════════════
-    this.panel = document.createElement('div');
-    this.panel.className = 'hud-panel';
-
-    // User speech text (brief, fades)
-    this.userText = document.createElement('div');
-    this.userText.className = 'hud-user-text';
-
-    // Text input row (always visible)
-    this.inputRow = document.createElement('div');
-    this.inputRow.className = 'hud-input-row';
-
-    this.input = document.createElement('input');
-    this.input.className = 'hud-input';
-    this.input.type = 'text';
-    this.input.placeholder = 'Type a message\u2026';
-    this.input.autocomplete = 'off';
-
-    this.sendBtn = document.createElement('button');
-    this.sendBtn.className = 'hud-send';
-    this.sendBtn.textContent = '\u27A4';
-    this.sendBtn.disabled = true;
-
-    this.inputRow.append(this.input, this.sendBtn);
-
-    // AI Response area (persistent, below input)
-    this.responseArea = document.createElement('div');
-    this.responseArea.className = 'hud-response-area';
-
-    this.responseText = document.createElement('div');
-    this.responseText.className = 'hud-response';
-    this.responseArea.appendChild(this.responseText);
-
-    this.panel.append(this.userText, this.inputRow, this.responseArea);
-    panelContainer.appendChild(this.panel);
-
-    // ── Ready promise (login gate) ──
-    this.ready = new Promise((resolve) => {
-      const submit = () => {
-        const name = loginInput.value.trim();
-        if (!name) {
-          loginInput.focus();
-          return;
-        }
-        this.enteredUsername = name;
-        localStorage.setItem('patyna:username', name);
-        this.startOverlay.classList.add('loading');
-        loginForm.style.display = 'none';
-        resolve();
-      };
-
-      loginBtn.addEventListener('click', submit);
-      loginInput.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') submit();
-      });
-    });
-
-    // Auto-focus the login input after a brief delay (allows overlay transition)
-    setTimeout(() => loginInput.focus(), 300);
-
-    // Update progress bar during initialization
-    eventBus.on('init:progress', ({ pct, label }) => {
-      this.progressBar.style.width = `${pct}%`;
-      this.progressLabel.textContent = label;
-    });
-
-    // Hide start overlay once backend is connected
-    eventBus.on('comm:ready', () => {
-      this.progressBar.style.width = '100%';
-      this.progressLabel.textContent = 'Ready';
-      setTimeout(() => {
-        this.startOverlay.classList.add('hidden');
-      }, 400);
-    });
-
-    // ── Toggle button handlers ──
-    this.micBtn.addEventListener('click', () => {
-      this.micEnabled = !this.micEnabled;
-      this.micBtn.dataset.active = this.micEnabled ? 'on' : 'off';
-      eventBus.emit('media:micToggle', { enabled: this.micEnabled });
-    });
-    this.camBtn.addEventListener('click', () => {
-      this.camEnabled = !this.camEnabled;
-      this.camBtn.dataset.active = this.camEnabled ? 'on' : 'off';
-      eventBus.emit('media:cameraToggle', { enabled: this.camEnabled });
-    });
-    this.ttsBtn.addEventListener('click', () => {
-      this.ttsEnabled = !this.ttsEnabled;
-      this.ttsBtn.dataset.active = this.ttsEnabled ? 'on' : 'off';
-      eventBus.emit('media:ttsToggle', { enabled: this.ttsEnabled });
-    });
-    this.dashBtn.addEventListener('click', () => {
-      eventBus.emit('sidebar:toggle');
-    });
-
-    // ── Text input handlers ──
-    this.input.addEventListener('input', () => {
-      this.sendBtn.disabled = this.input.value.trim().length === 0;
-    });
-    this.input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !this.sendBtn.disabled) {
-        this.submitText();
-      }
-    });
-    this.sendBtn.addEventListener('click', () => this.submitText());
-
-    // ── Event bus subscriptions ──
-    eventBus.on('state:change', ({ to }) => this.setState(to));
-
-    // User speech transcripts (from STT only)
-    eventBus.on('voice:transcript', ({ text, isFinal }) => {
-      this.setUserText(text, isFinal);
-      // Clear response buffer when user sends a new message
-      // (next textDelta will start fresh)
-      if (isFinal) {
-        this.responseBuffer = '';
-      }
-    });
-
-    // AI response text (streamed from Aelora)
-    eventBus.on('comm:textDelta', ({ text }) => {
-      this.appendResponse(text);
-    });
-    eventBus.on('comm:textDone', ({ text }) => {
-      this.finalizeResponse(text);
-    });
-
-    // Connection status
-    eventBus.on('comm:connected', () => {
-      this.connDot.dataset.conn = 'connected';
-    });
-    eventBus.on('comm:disconnected', () => {
-      this.connDot.dataset.conn = 'disconnected';
-    });
-
-    // Media status (mic/camera indicators)
-    eventBus.on('media:status', ({ mic, camera }) => {
-      this.setMediaStatus(mic, camera);
-    });
-
-    // Mood updates
-    eventBus.on('comm:mood', (mood) => {
-      this.setMood(mood);
-    });
-
-    // Sidebar state → sync dash button
-    eventBus.on('sidebar:stateChange', ({ visible }) => {
-      this.dashBtn.dataset.active = visible ? 'on' : 'off';
-    });
-
-    // Errors
-    eventBus.on('comm:error', ({ message }) => {
-      this.showToast(message);
-    });
-  }
-
-  // ── AI response methods ──
-
-  /** Append streaming delta text to the response area */
-  private appendResponse(delta: string): void {
-    // Clear old response when a new one starts streaming
-    if (this.responseBuffer.length === 0) {
-      this.responseText.textContent = '';
-    }
-    this.responseBuffer += delta;
-    this.responseText.textContent = this.responseBuffer;
-    this.responseArea.classList.add('visible');
-  }
-
-  /** Finalize the response with the complete text */
-  private finalizeResponse(fullText: string): void {
-    this.responseBuffer = fullText;
-    this.responseText.textContent = fullText;
-    this.responseArea.classList.add('visible');
-  }
-
-  /** Clear the response buffer (called before new response starts) */
-  clearResponse(): void {
-    this.responseBuffer = '';
-    this.responseText.textContent = '';
-    this.responseArea.classList.remove('visible');
-  }
-
-  // ── Media status ──
-
-  private setMediaStatus(mic: boolean, camera: boolean): void {
-    this.micEnabled = mic;
-    this.camEnabled = camera;
-    this.micBtn.dataset.active = mic ? 'on' : 'off';
-    this.camBtn.dataset.active = camera ? 'on' : 'off';
-  }
-
-  // ── Mood methods ──
-
-  private setMood(mood: MoodData): void {
-    if (!mood.active) {
-      this.moodLabel.textContent = '';
-      this.moodLabel.classList.remove('visible');
-      return;
-    }
-    this.moodLabel.textContent = mood.label;
-    this.moodLabel.dataset.emotion = mood.emotion;
-    this.moodLabel.dataset.intensity = mood.intensity;
-    this.moodLabel.classList.add('visible');
-  }
-
-  // ── User text methods ──
-
-  private submitText(): void {
-    const text = this.input.value.trim();
-    if (!text) return;
-    this.input.value = '';
-    this.sendBtn.disabled = true;
-
-    // Emit as a final transcript — same path as voice
-    eventBus.emit('voice:transcript', { text, isFinal: true });
-  }
-
-  private setState(state: AppState): void {
-    this.statusDot.dataset.state = state;
-    this.statusLabel.textContent = state;
-  }
-
-  private setUserText(text: string, isFinal: boolean): void {
-    this.userText.textContent = text;
-    this.userText.classList.toggle('visible', text.length > 0);
-    clearTimeout(this.userTextTimer);
-    if (isFinal) {
-      this.userTextTimer = window.setTimeout(() => {
-        this.userText.classList.remove('visible');
-      }, 4000);
-    }
-  }
-
-  showToast(message: string, durationMs = 4000): void {
-    this.toast.textContent = message;
-    this.toast.classList.add('show');
-    clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => {
-      this.toast.classList.remove('show');
-    }, durationMs);
-  }
-
-  destroy(): void {
-    this.nav.remove();
-    this.overlay.remove();
-    this.panel.remove();
+    container.append(this.dashBtn);
   }
 }

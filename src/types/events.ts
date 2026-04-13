@@ -30,8 +30,6 @@ export interface EventMap {
   'audio:playbackEnd': void;
   'audio:ttsStreamStart': void;
   'audio:ttsStreamDone': void;
-  'audio:amplitude': { value: number };
-
   // Media permissions & toggles
   'media:status': { mic: boolean; camera: boolean };
   'media:micToggle': { enabled: boolean };

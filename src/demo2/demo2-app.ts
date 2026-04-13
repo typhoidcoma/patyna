@@ -20,6 +20,7 @@ import { CommManager } from "@/comm/protocol.ts";
 import { AudioManager } from "@/audio/audio-manager.ts";
 import { TTSPlayer } from "@/audio/tts-player.ts";
 import { ElevenLabsTTS } from "@/audio/elevenlabs-tts.ts";
+import { SpeakingState } from "@/core/speaking-state.ts";
 import { AeloraClient } from "@/api/aelora-client.ts";
 import { FeedbackClient } from "@/api/feedback-client.ts";
 import { burstStars, flashGold, playCelebrateChime } from "@/fx/celebration.ts";
@@ -116,12 +117,7 @@ export class Demo2App {
   private suppressNextCelebration = false;
   private readonly VAULT_SYNC_INTERVAL_MS = 30_000; // sync every 30s
 
-  // Speaking-state tracking (same as DemoApp)
-  private textStreamDone = false;
-  private audioPlaying = false;
-  private ttsStreamOpen = false;
-  private finishTimer: ReturnType<typeof setTimeout> | null = null;
-  private pendingTaskMessage: string | null = null;
+  private speaking: SpeakingState;
 
   // Mouse gaze
   private cameraActive = false;
@@ -151,6 +147,21 @@ export class Demo2App {
     this.audioManager = new AudioManager(config);
     this.ttsPlayer = new TTSPlayer(this.audioManager);
     this.elevenLabs = new ElevenLabsTTS(config);
+
+    this.speaking = new SpeakingState({
+      stateMachine: this.stateMachine,
+      elevenLabs: this.elevenLabs,
+      ttsPlayer: this.ttsPlayer,
+      onIdle: () => {
+        this.goalsTasksPanel.setBusy(false);
+        if (this.speaking.pendingTaskMessage && this.comm.connected) {
+          const msg = this.speaking.pendingTaskMessage;
+          this.speaking.pendingTaskMessage = null;
+          this.transitionToThinking();
+          this.comm.sendMessage(msg);
+        }
+      },
+    });
 
     this.aeloraClient = new AeloraClient({
       wsUrl: config.websocket.url,
@@ -850,7 +861,8 @@ export class Demo2App {
     });
 
     eventBus.on("comm:disconnected", () => {
-      this.resetSpeakingState();
+      this.speaking.reset();
+      this.goalsTasksPanel.setBusy(false);
       this.stateMachine.reset();
     });
 
@@ -875,7 +887,8 @@ export class Demo2App {
 
     eventBus.on("comm:error", ({ code, message }) => {
       console.error(`[LUMINORA] Server error (${code}): ${message}`);
-      this.resetSpeakingState();
+      this.speaking.reset();
+      this.goalsTasksPanel.setBusy(false);
       this.stateMachine.reset();
     });
 
@@ -883,36 +896,33 @@ export class Demo2App {
 
     eventBus.on("comm:textDelta", () => {
       if (this.stateMachine.state === "thinking") {
-        this.textStreamDone = false;
-        this.audioPlaying = false;
+        this.speaking.textStreamDone = false;
+        this.speaking.audioPlaying = false;
       }
     });
 
     eventBus.on("comm:textDone", ({ text }) => {
-      this.textStreamDone = true;
+      this.speaking.textStreamDone = true;
       this.appendChatEntry("assistant", text);
-      this.tryFinishResponse();
-      // Sync vault after each LLM response — backend may have stored new facts
+      this.speaking.tryFinishResponse();
       this.syncVault();
-      // Wendy may create quests via tools during this turn; Realtime / WS hints can
-      // miss (config, event shape). Re-fetch so ALL TASKS stays in sync.
       void this.refreshQuestTasks();
     });
 
     eventBus.on("audio:ttsStreamStart", () => {
-      this.ttsStreamOpen = true;
+      this.speaking.ttsStreamOpen = true;
     });
 
     eventBus.on("audio:ttsStreamDone", () => {
-      this.ttsStreamOpen = false;
-      this.tryFinishResponse();
+      this.speaking.ttsStreamOpen = false;
+      this.speaking.tryFinishResponse();
     });
 
     eventBus.on("audio:playbackStart", () => {
-      this.audioPlaying = true;
-      if (this.finishTimer) {
-        clearTimeout(this.finishTimer);
-        this.finishTimer = null;
+      this.speaking.audioPlaying = true;
+      if (this.speaking.finishTimer) {
+        clearTimeout(this.speaking.finishTimer);
+        this.speaking.finishTimer = null;
       }
       const s = this.stateMachine.state;
       if (s === "thinking" || s === "idle") {
@@ -921,8 +931,8 @@ export class Demo2App {
     });
 
     eventBus.on("audio:playbackEnd", () => {
-      this.audioPlaying = false;
-      this.tryFinishResponse();
+      this.speaking.audioPlaying = false;
+      this.speaking.tryFinishResponse();
     });
 
     // ── Mood ──
@@ -995,62 +1005,10 @@ export class Demo2App {
     });
   }
 
-  // ── Speaking state machine (identical to DemoApp) ──
-
+  /** Transition to thinking + mark panel busy. */
   private transitionToThinking(): void {
-    const s = this.stateMachine.state;
     this.goalsTasksPanel.setBusy(true);
-    if (s === "listening") {
-      this.stateMachine.transition("thinking");
-    } else if (s === "idle") {
-      this.stateMachine.transition("listening");
-      this.stateMachine.transition("thinking");
-    } else if (s === "speaking" || s === "thinking") {
-      this.elevenLabs.close();
-      this.ttsPlayer.flush();
-      this.resetSpeakingState();
-      this.goalsTasksPanel.setBusy(true);
-      this.stateMachine.transition("idle");
-      this.stateMachine.transition("listening");
-      this.stateMachine.transition("thinking");
-    }
-  }
-
-  private tryFinishResponse(): void {
-    if (!this.textStreamDone) return;
-    if (this.audioPlaying) return;
-    if (this.ttsStreamOpen) return;
-
-    if (this.finishTimer) return;
-    this.finishTimer = setTimeout(() => {
-      this.finishTimer = null;
-      if (!this.textStreamDone || this.audioPlaying || this.ttsStreamOpen)
-        return;
-      const s = this.stateMachine.state;
-      if (s === "speaking" || s === "thinking") {
-        this.stateMachine.transition("idle");
-      }
-      this.goalsTasksPanel.setBusy(false);
-
-      if (this.pendingTaskMessage && this.comm.connected) {
-        const msg = this.pendingTaskMessage;
-        this.pendingTaskMessage = null;
-        this.transitionToThinking();
-        this.comm.sendMessage(msg);
-      }
-    }, 400);
-  }
-
-  private resetSpeakingState(): void {
-    this.textStreamDone = false;
-    this.audioPlaying = false;
-    this.ttsStreamOpen = false;
-    this.pendingTaskMessage = null;
-    if (this.finishTimer) {
-      clearTimeout(this.finishTimer);
-      this.finishTimer = null;
-    }
-    this.goalsTasksPanel.setBusy(false);
+    this.transitionToThinking();
   }
 
   /** True when the avatar is thinking or speaking — blocks task interactions. */

@@ -24,6 +24,7 @@ import { CommManager } from '@/comm/protocol.ts';
 import { AudioManager } from '@/audio/audio-manager.ts';
 import { TTSPlayer } from '@/audio/tts-player.ts';
 import { ElevenLabsTTS } from '@/audio/elevenlabs-tts.ts';
+import { SpeakingState } from '@/core/speaking-state.ts';
 import { AeloraClient } from '@/api/aelora-client.ts';
 import { DemoHUD } from '@/ui/demo-hud.ts';
 import { TodayCard } from '@/ui/today-card.ts';
@@ -66,12 +67,7 @@ export class DemoApp {
   // Re-layout function for floating widgets (set by setupFloatingWidgets)
   private stackWidgets: (() => void) | null = null;
 
-  // Speaking-state completion tracking
-  private textStreamDone = false;
-  private audioPlaying = false;
-  private ttsStreamOpen = false;
-  private finishTimer: ReturnType<typeof setTimeout> | null = null;
-  private pendingTaskMessage: string | null = null;
+  private speaking: SpeakingState;
 
   // Gaze source: camera is primary when on; mouse can temporarily override
   // if moved continuously for MOUSE_TAKEOVER_MS, then reverts after MOUSE_RELEASE_MS idle.
@@ -95,6 +91,22 @@ export class DemoApp {
     this.ttsPlayer = new TTSPlayer(this.audioManager);
     this.elevenLabs = new ElevenLabsTTS(config);
     this.demoState = new DemoState();
+
+    // Speaking state (shared logic for text/TTS/audio completion tracking)
+    this.speaking = new SpeakingState({
+      stateMachine: this.stateMachine,
+      elevenLabs: this.elevenLabs,
+      ttsPlayer: this.ttsPlayer,
+      onIdle: () => {
+        // If a task was completed while the bot was speaking, send it now
+        if (this.speaking.pendingTaskMessage && this.comm.connected) {
+          const msg = this.speaking.pendingTaskMessage;
+          this.speaking.pendingTaskMessage = null;
+          this.speaking.transitionToThinking();
+          this.comm.sendMessage(msg);
+        }
+      },
+    });
 
     // Aelora REST API client
     this.aeloraClient = new AeloraClient({
@@ -175,20 +187,16 @@ export class DemoApp {
 
       const s = this.stateMachine.state;
       if (s === 'speaking' || s === 'thinking') {
-        // Don't interrupt — wait for current response to finish, then send
-        this.pendingTaskMessage = message;
+        this.speaking.pendingTaskMessage = message;
       } else {
-        this.transitionToThinking();
+        this.speaking.transitionToThinking();
         this.comm.sendMessage(message);
       }
     };
 
     // Reset → reload data + send reset message
     this.hud.onReset = () => {
-      // Interrupt any current response
-      this.elevenLabs.close();
-      this.ttsPlayer.flush();
-      this.resetSpeakingState();
+      this.speaking.interruptAndReset();
       this.stateMachine.reset();
 
       const message = this.demoState.reset();
@@ -203,7 +211,7 @@ export class DemoApp {
         // Brief delay so clear is processed before new message
         setTimeout(() => {
           this.comm.sendMessage(message);
-          this.transitionToThinking();
+          this.speaking.transitionToThinking();
         }, 200);
       }
     };
@@ -273,17 +281,17 @@ export class DemoApp {
       const username = this.hud.enteredUsername || 'there';
       const primingMessage = this.demoState.buildPrimingMessage(username);
       this.comm.sendMessage(primingMessage);
-      this.transitionToThinking();
+      this.speaking.transitionToThinking();
     });
 
     eventBus.on('comm:disconnected', () => {
-      this.resetSpeakingState();
+      this.speaking.reset();
       this.stateMachine.reset();
     });
 
     eventBus.on('comm:error', ({ code, message }) => {
       console.error(`[Demo] Server error (${code}): ${message}`);
-      this.resetSpeakingState();
+      this.speaking.reset();
       this.stateMachine.reset();
     });
 
@@ -291,31 +299,30 @@ export class DemoApp {
 
     eventBus.on('comm:textDelta', () => {
       if (this.stateMachine.state === 'thinking') {
-        this.textStreamDone = false;
-        this.audioPlaying = false;
+        this.speaking.textStreamDone = false;
+        this.speaking.audioPlaying = false;
       }
     });
 
     eventBus.on('comm:textDone', () => {
-      this.textStreamDone = true;
-      this.tryFinishResponse();
+      this.speaking.textStreamDone = true;
+      this.speaking.tryFinishResponse();
     });
 
     eventBus.on('audio:ttsStreamStart', () => {
-      this.ttsStreamOpen = true;
+      this.speaking.ttsStreamOpen = true;
     });
 
     eventBus.on('audio:ttsStreamDone', () => {
-      this.ttsStreamOpen = false;
-      this.tryFinishResponse();
+      this.speaking.ttsStreamOpen = false;
+      this.speaking.tryFinishResponse();
     });
 
     eventBus.on('audio:playbackStart', () => {
-      this.audioPlaying = true;
-      // Cancel any pending finish — audio resumed
-      if (this.finishTimer) {
-        clearTimeout(this.finishTimer);
-        this.finishTimer = null;
+      this.speaking.audioPlaying = true;
+      if (this.speaking.finishTimer) {
+        clearTimeout(this.speaking.finishTimer);
+        this.speaking.finishTimer = null;
       }
       const s = this.stateMachine.state;
       if (s === 'thinking' || s === 'idle') {
@@ -324,18 +331,17 @@ export class DemoApp {
     });
 
     eventBus.on('audio:playbackEnd', () => {
-      this.audioPlaying = false;
-      this.tryFinishResponse();
+      this.speaking.audioPlaying = false;
+      this.speaking.tryFinishResponse();
     });
 
     // ── Text input — intercept and wrap with context ──
 
     eventBus.on('voice:transcript', ({ text, isFinal }) => {
       if (isFinal && this.comm.connected) {
-        // Wrap user message with dashboard context before sending
         const enrichedMessage = this.demoState.wrapMessage(text);
         this.comm.sendMessage(enrichedMessage);
-        this.transitionToThinking();
+        this.speaking.transitionToThinking();
       }
     });
 
@@ -358,62 +364,6 @@ export class DemoApp {
     eventBus.on('comm:mood', (mood) => {
       console.log(`[Demo] Mood: ${mood.label} (${mood.emotion}/${mood.intensity})`);
     });
-  }
-
-  private transitionToThinking(): void {
-    const s = this.stateMachine.state;
-    if (s === 'listening') {
-      this.stateMachine.transition('thinking');
-    } else if (s === 'idle') {
-      this.stateMachine.transition('listening');
-      this.stateMachine.transition('thinking');
-    } else if (s === 'speaking' || s === 'thinking') {
-      this.elevenLabs.close();
-      this.ttsPlayer.flush();
-      this.resetSpeakingState();
-      this.stateMachine.transition('idle');
-      this.stateMachine.transition('listening');
-      this.stateMachine.transition('thinking');
-    }
-  }
-
-  private tryFinishResponse(): void {
-    if (!this.textStreamDone) return;
-    if (this.audioPlaying) return;
-    if (this.ttsStreamOpen) return;
-
-    // Debounce: wait 400ms and re-check before transitioning.
-    // This prevents a brief worklet buffer gap from prematurely ending
-    // the response — if new audio arrives the flags will flip back.
-    if (this.finishTimer) return; // already scheduled
-    this.finishTimer = setTimeout(() => {
-      this.finishTimer = null;
-      // Re-check all conditions after the delay
-      if (!this.textStreamDone || this.audioPlaying || this.ttsStreamOpen) return;
-      const s = this.stateMachine.state;
-      if (s === 'speaking' || s === 'thinking') {
-        this.stateMachine.transition('idle');
-      }
-
-      // If a task was completed while the bot was speaking, send it now
-      if (this.pendingTaskMessage && this.comm.connected) {
-        const msg = this.pendingTaskMessage;
-        this.pendingTaskMessage = null;
-        this.transitionToThinking();
-        this.comm.sendMessage(msg);
-      }
-    }, 400);
-  }
-
-  private resetSpeakingState(): void {
-    this.textStreamDone = false;
-    this.audioPlaying = false;
-    this.ttsStreamOpen = false;
-    this.pendingTaskMessage = null;
-    if (this.finishTimer) {
-      clearTimeout(this.finishTimer);
-      this.finishTimer = null;
-    }
   }
 
   private async onReady(): Promise<void> {

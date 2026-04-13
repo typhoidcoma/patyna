@@ -5,12 +5,20 @@
 
 import type { LuminoraFixture } from './demo2-types.ts';
 
+function todayDayLabel(): string {
+  return new Date().toLocaleDateString('en-US', { weekday: 'long' }).toUpperCase();
+}
+
+function todayDateLabel(): string {
+  return new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }).toUpperCase();
+}
+
 const FIXTURE: LuminoraFixture = {
   username: 'JToeps',
 
   briefing: {
-    dayLabel: 'TUESDAY',
-    weekLabel: 'MARCH 30, 2026',
+    dayLabel: todayDayLabel(),
+    weekLabel: todayDateLabel(),
     headline: 'Thesis draft is <em>closer</em> than it feels.',
     sleepHours: 6,
     sleepNote:
